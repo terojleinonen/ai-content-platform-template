@@ -1,10 +1,31 @@
+# .NET
 bin/
 obj/
 .vs/
 *.user
 *.swp
-*.DS_Store
 /publish/
-/dist/
-/node_modules/
-/coverage/
+TestResults/
+
+# Local SQLite database
+*.db
+*.db-shm
+*.db-wal
+
+# Frontend
+node_modules/
+dist/
+coverage/
+# Production frontend build is generated into the API's wwwroot
+backend/src/AiContentPlatform.Api/wwwroot/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json

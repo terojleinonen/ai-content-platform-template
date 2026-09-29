@@ -1,24 +1,14 @@
-# Frontend Placeholder
-
-This folder is reserved for the web frontend (Blazor WebAssembly, React, or another SPA framework).
-
-## Suggested setup (option A – Blazor WebAssembly)
+# Frontend (React + TypeScript + Vite)
 
 ```bash
-dotnet new blazorwasm -n AiContentPlatform.Frontend
+npm install
+npm run dev      # http://localhost:5173, proxies /api to http://localhost:5080
+npm run build    # typecheck + production build into ../backend/src/AiContentPlatform.Api/wwwroot
 ```
 
-Then move the generated project into this folder and configure it to call the backend API at `/api/...`.
+Environment variables:
 
-## Suggested setup (option B – React + Vite)
+- `VITE_API_URL` – backend URL used by the dev-server proxy (default `http://localhost:5080`).
+- `VITE_API_BASE` – prefix for API calls from the browser (default: same origin).
 
-```bash
-npm create vite@latest ai-content-platform-frontend -- --template react-ts
-```
-
-Then move the created project into this folder, configure environment variables for the backend API URL, and implement pages:
-
-- Content editor
-- Templates gallery
-- Media library
-- Settings / billing
+Pages: **Write** (generate + SEO + save), **Projects** (library/editor), **Images** (image generation).

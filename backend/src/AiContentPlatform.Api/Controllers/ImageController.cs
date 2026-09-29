@@ -16,13 +16,11 @@ public class ImageController : ControllerBase
     }
 
     [HttpPost("generate")]
+    [ProducesResponseType<GenerateImageResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
     public async Task<ActionResult<GenerateImageResponse>> Generate([FromBody] GenerateImageRequest request, CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(request.Prompt))
-        {
-            return BadRequest("Prompt is required.");
-        }
-
         var result = await _aiImageService.GenerateImageAsync(request, cancellationToken);
         return Ok(result);
     }

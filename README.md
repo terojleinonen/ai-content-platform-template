@@ -1,53 +1,146 @@
-# AI Content Creation Platform – Template (C# / ASP.NET Core + Web + AI)
+# AI Content Creation Platform – Demo / Template
 
-This is a starter template repository for an **AI-powered content creation SaaS**.
-It includes:
+A full-stack, working demo of an **AI-powered content creation SaaS**:
+ASP.NET Core (.NET 10) API + React/Vite frontend, with pluggable AI providers.
 
-- ASP.NET Core Web API backend
-- Basic architecture for AI orchestration, content, and image services
-- Placeholder frontend folder
-- Example domain models, controllers, and services
-- Example configuration and TODOs
+It runs **out of the box with no API keys** (built-in mock generators), and switches to
+real AI output as soon as you provide an Anthropic or OpenAI key.
 
-> This template is intentionally minimal and is meant as a good starting point
-> for a real startup-level project. Extend and adapt it to your needs.
+## Features
 
-## Structure
+- **Write** – generate blog posts, product descriptions, social posts and emails from a brief
+  (audience, tone, language, SEO keywords); edit the result and save it to a project.
+- **SEO insights** – word count and keyword density per keyword (multi-word phrases supported),
+  rated *missing / low / good / too high*.
+- **Projects** – organize saved content; view, edit and delete items (SQLite via EF Core).
+- **Images** – generate images from a prompt with style and format options.
+- **Pluggable AI providers**
+
+  | Capability | Mock (default) | Anthropic (Claude) | OpenAI |
+  |---|---|---|---|
+  | Text  | ✅ template-based, offline | ✅ Messages API | ✅ Chat Completions |
+  | Image | ✅ SVG placeholder, offline | – | ✅ Images API (`gpt-image-1`) |
+
+## Quick start
+
+Prerequisites: [.NET 10 SDK](https://dotnet.microsoft.com/download) and Node.js 22+.
+
+**Option A – single process** (backend serves the built frontend):
+
+```bash
+cd frontend && npm install && npm run build   # outputs to the API's wwwroot
+cd ../backend/src/AiContentPlatform.Api && dotnet run
+```
+
+Open http://localhost:5080.
+
+**Option B – development with hot reload** (two terminals):
+
+```bash
+# Terminal 1 – API on http://localhost:5080 (Swagger UI at /swagger)
+cd backend/src/AiContentPlatform.Api
+dotnet run
+
+# Terminal 2 – Vite dev server on http://localhost:5173 (proxies /api to :5080)
+cd frontend
+npm install
+npm run dev
+```
+
+On first start the API creates `ai-content-platform.db` (SQLite) and seeds a demo project.
+Delete the file to reset the demo data.
+
+## Using a real AI provider
+
+With `Ai:TextProvider` / `Ai:ImageProvider` set to `Auto` (the default), the API picks the first
+provider that has a key: **Anthropic → OpenAI → Mock** for text, **OpenAI → Mock** for images.
+The active providers are shown in the top-right badge and at `GET /api/health`.
+
+```bash
+# Environment variables…
+export ANTHROPIC_API_KEY=sk-ant-...
+export OPENAI_API_KEY=sk-...
+
+# …or user secrets (kept outside the repo)
+cd backend/src/AiContentPlatform.Api
+dotnet user-secrets set "Ai:Anthropic:ApiKey" "sk-ant-..."
+dotnet user-secrets set "Ai:OpenAI:ApiKey" "sk-..."
+```
+
+Other settings (in `appsettings.json`, overridable via env vars like `Ai__Anthropic__Model`):
+
+| Setting | Default |
+|---|---|
+| `Ai:TextProvider` | `Auto` (`Mock`, `Anthropic`, `OpenAI`) |
+| `Ai:ImageProvider` | `Auto` (`Mock`, `OpenAI`) |
+| `Ai:Anthropic:Model` | `claude-sonnet-5-5` |
+| `Ai:Anthropic:MaxTokens` | `2048` |
+| `Ai:OpenAI:Model` / `ImageModel` | `gpt-4.1-mini` / `gpt-image-1` |
+| `Ai:OpenAI:BaseUrl` | `https://api.openai.com/` (point at any OpenAI-compatible endpoint) |
+| `ConnectionStrings:Default` | `Data Source=ai-content-platform.db` |
+
+Provider errors are returned as HTTP 502 `ProblemDetails` and shown in the UI.
+
+## API
+
+| Method | Route | Description |
+|---|---|---|
+| GET | `/api/health` | Status and active AI providers |
+| POST | `/api/content/generate` | Generate content + SEO scores |
+| POST | `/api/image/generate` | Generate an image (URL or `data:` URI) |
+| GET/POST | `/api/projects` | List / create projects |
+| GET/PUT/DELETE | `/api/projects/{id}` | Get / rename / delete a project |
+| GET/POST | `/api/projects/{id}/content` | List / add content items |
+| GET/PUT/DELETE | `/api/content-items/{id}` | Get / update / delete a content item |
+
+Explore and try all endpoints with Swagger UI at http://localhost:5080/swagger (Development).
+
+## Project structure
 
 ```text
 .
 ├── backend
+│   ├── AiContentPlatform.slnx
+│   ├── src/AiContentPlatform.Api
+│   │   ├── Controllers      # Content, Image, Projects, ContentItems, Health
+│   │   ├── Data             # EF Core DbContext + demo seed data
+│   │   ├── Domain           # User, Project, ContentItem
+│   │   ├── Dtos
+│   │   ├── Options          # AI provider configuration
+│   │   └── Services         # AI orchestration, providers, SEO scoring
+│   └── tests/AiContentPlatform.Api.Tests   # xUnit unit + integration tests
+├── frontend                 # React 19 + TypeScript + Vite
 │   └── src
-│       └── AiContentPlatform.Api
-│           ├── Controllers
-│           ├── Domain
-│           ├── Services
-│           └── appsettings.json
-└── frontend
-    └── README.md
+│       ├── pages            # Write, Projects, Images
+│       └── components       # Markdown renderer, SEO panel
+└── .github/workflows/ci.yml # Build + test backend, build frontend
 ```
 
-## Getting Started (Backend)
+### Adding another AI provider
 
-1. Install **.NET 8 SDK** (or newer).
-2. Navigate to the backend API:
-   ```bash
-   cd backend/src/AiContentPlatform.Api
-   dotnet restore
-   dotnet run
-   ```
-3. The API will start on `https://localhost:5001` or similar (check console output).
+Implement `ITextGenerationProvider` (text) or `IAiImageService` (images), register it in
+`Program.cs`, and add it to `AiProviderSelector`. LLM providers can reuse
+`ContentPrompt.SystemPrompt`, `BuildUserPrompt` and `Parse`.
 
-## Next Steps / TODO
+## Tests
 
-- Implement real authentication & authorization (ASP.NET Core Identity / JWT).
-- Connect to PostgreSQL using EF Core.
-- Add Redis and configure caching.
-- Implement calls to your AI provider (OpenAI / Azure OpenAI, etc.).
-- Create a real frontend (Blazor or React) inside the `frontend` folder.
-- Add unit/integration tests and CI pipeline.
+```bash
+cd backend && dotnet test
+```
+
+Integration tests run the real API in-memory (`WebApplicationFactory`) against a temporary
+SQLite database with the mock providers; the Anthropic client is tested against a stub HTTP handler.
+
+## Next steps / TODO (for a production SaaS)
+
+- Authentication & authorization (ASP.NET Core Identity / JWT / OIDC); projects are currently
+  owned by a seeded demo user.
+- EF Core migrations and PostgreSQL instead of `EnsureCreated` + SQLite.
+- Streaming generation, rate limiting, usage metering and billing.
+- Persist generated images to blob storage instead of returning `data:` URIs.
+- Docker images and deployment pipeline.
 
 ---
 
-This repo is designed as a **GitHub Template Repository** candidate – just push it
-to GitHub and enable "Use this template".
+This repo is designed as a **GitHub Template Repository** – push it to GitHub and enable
+"Use this template".

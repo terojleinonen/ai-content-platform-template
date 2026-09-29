@@ -1,4 +1,7 @@
+using AiContentPlatform.Api.Options;
+using AiContentPlatform.Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Options;
 
 namespace AiContentPlatform.Api.Controllers;
 
@@ -6,10 +9,29 @@ namespace AiContentPlatform.Api.Controllers;
 [Route("api/[controller]")]
 public class HealthController : ControllerBase
 {
-    [HttpGet]
-    public IActionResult Get() => Ok(new
+    private readonly AiOptions _ai;
+
+    public HealthController(IOptions<AiOptions> ai)
     {
-        status = "ok",
-        timestamp = DateTime.UtcNow
-    });
+        _ai = ai.Value;
+    }
+
+    [HttpGet]
+    public IActionResult Get()
+    {
+        var textProvider = AiProviderSelector.ResolveText(_ai);
+        return Ok(new
+        {
+            status = "ok",
+            timestamp = DateTime.UtcNow,
+            textProvider,
+            textModel = textProvider switch
+            {
+                AiProviderNames.Anthropic => _ai.Anthropic.Model,
+                AiProviderNames.OpenAI => _ai.OpenAI.Model,
+                _ => "built-in templates"
+            },
+            imageProvider = AiProviderSelector.ResolveImage(_ai)
+        });
+    }
 }

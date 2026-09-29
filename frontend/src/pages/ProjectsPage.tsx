@@ -1,0 +1,251 @@
+import { useCallback, useEffect, useState, type FormEvent } from 'react'
+import { api, parseKeywords } from '../api'
+import { Markdown } from '../components/Markdown'
+import { CONTENT_TYPES, CONTENT_TYPE_LABELS, type ContentItem, type ContentType, type Project } from '../types'
+
+export function ProjectsPage() {
+  const [projects, setProjects] = useState<Project[]>([])
+  const [selectedId, setSelectedId] = useState<string>()
+  const [items, setItems] = useState<ContentItem[]>([])
+  const [openItem, setOpenItem] = useState<ContentItem>()
+  const [newName, setNewName] = useState('')
+  const [error, setError] = useState<string>()
+
+  const loadProjects = useCallback(async () => {
+    try {
+      const list = await api.listProjects()
+      setProjects(list)
+      setSelectedId((id) => (id && list.some((p) => p.id === id) ? id : list[0]?.id))
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }, [])
+
+  const loadItems = useCallback(async (projectId: string) => {
+    try {
+      setItems(await api.listContent(projectId))
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadProjects()
+  }, [loadProjects])
+
+  useEffect(() => {
+    setOpenItem(undefined)
+    if (selectedId) loadItems(selectedId)
+    else setItems([])
+  }, [selectedId, loadItems])
+
+  async function createProject(e: FormEvent) {
+    e.preventDefault()
+    if (!newName.trim()) return
+    try {
+      const project = await api.createProject(newName.trim())
+      setNewName('')
+      await loadProjects()
+      setSelectedId(project.id)
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  async function deleteProject(project: Project) {
+    if (!confirm(`Delete “${project.name}” and all its content?`)) return
+    await api.deleteProject(project.id)
+    setSelectedId(undefined)
+    await loadProjects()
+  }
+
+  const selected = projects.find((p) => p.id === selectedId)
+
+  return (
+    <div className="projects">
+      <aside className="card sidebar">
+        <h2>Projects</h2>
+        <ul className="project-list">
+          {projects.map((p) => (
+            <li key={p.id}>
+              <button className={p.id === selectedId ? 'active' : ''} onClick={() => setSelectedId(p.id)}>
+                <span>{p.name}</span>
+                <span className="count">{p.contentCount}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+        <form className="new-project" onSubmit={createProject}>
+          <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="New project name" />
+          <button className="primary" disabled={!newName.trim()}>
+            Add
+          </button>
+        </form>
+        {error && <p className="error">{error}</p>}
+      </aside>
+
+      <section className="card">
+        {!selected ? (
+          <div className="empty">
+            <div className="empty-icon">📁</div>
+            <p>Create a project to start organizing your content.</p>
+          </div>
+        ) : openItem ? (
+          <ContentEditor
+            item={openItem}
+            onClose={() => setOpenItem(undefined)}
+            onSaved={async (saved) => {
+              setOpenItem(saved)
+              await loadItems(selected.id)
+            }}
+            onDeleted={async () => {
+              setOpenItem(undefined)
+              await Promise.all([loadItems(selected.id), loadProjects()])
+            }}
+          />
+        ) : (
+          <>
+            <div className="section-header">
+              <div>
+                <h2>{selected.name}</h2>
+                {selected.description && <p className="muted">{selected.description}</p>}
+              </div>
+              <button className="ghost danger" onClick={() => deleteProject(selected)}>
+                Delete project
+              </button>
+            </div>
+            {items.length === 0 ? (
+              <div className="empty">
+                <p>No content yet.</p>
+                <a href="#/write">Generate your first piece →</a>
+              </div>
+            ) : (
+              <ul className="content-grid">
+                {items.map((item) => (
+                  <li key={item.id}>
+                    <button className="content-card" onClick={() => setOpenItem(item)}>
+                      <span className="pill neutral">{CONTENT_TYPE_LABELS[item.type]}</span>
+                      <strong>{item.title}</strong>
+                      <span className="muted small snippet">{item.body.replace(/[#*_]/g, '').slice(0, 140)}…</span>
+                      <span className="muted small">{new Date(item.updatedAt ?? item.createdAt).toLocaleString()}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </>
+        )}
+      </section>
+    </div>
+  )
+}
+
+function ContentEditor({
+  item,
+  onClose,
+  onSaved,
+  onDeleted,
+}: {
+  item: ContentItem
+  onClose: () => void
+  onSaved: (item: ContentItem) => void
+  onDeleted: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [type, setType] = useState<ContentType>(item.type)
+  const [title, setTitle] = useState(item.title)
+  const [body, setBody] = useState(item.body)
+  const [keywords, setKeywords] = useState(item.keywords.join(', '))
+  const [error, setError] = useState<string>()
+
+  async function save() {
+    try {
+      const saved = await api.updateContent(item.id, {
+        type,
+        title,
+        body,
+        targetAudience: item.targetAudience,
+        toneOfVoice: item.toneOfVoice,
+        keywords: parseKeywords(keywords),
+      })
+      setEditing(false)
+      onSaved(saved)
+    } catch (err) {
+      setError((err as Error).message)
+    }
+  }
+
+  async function remove() {
+    if (!confirm(`Delete “${item.title}”?`)) return
+    await api.deleteContent(item.id)
+    onDeleted()
+  }
+
+  return (
+    <div>
+      <div className="result-toolbar">
+        <button className="ghost" onClick={onClose}>
+          ← Back
+        </button>
+        <div className="spacer" />
+        {editing ? (
+          <>
+            <button className="ghost" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+            <button className="primary" onClick={save}>
+              Save
+            </button>
+          </>
+        ) : (
+          <>
+            <button className="ghost" onClick={() => setEditing(true)}>
+              Edit
+            </button>
+            <button className="ghost danger" onClick={remove}>
+              Delete
+            </button>
+          </>
+        )}
+      </div>
+
+      {editing ? (
+        <div className="form">
+          <div className="row">
+            <label>
+              Type
+              <select value={type} onChange={(e) => setType(e.target.value as ContentType)}>
+                {CONTENT_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {CONTENT_TYPE_LABELS[t]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Keywords
+              <input value={keywords} onChange={(e) => setKeywords(e.target.value)} />
+            </label>
+          </div>
+          <input className="title-input" value={title} onChange={(e) => setTitle(e.target.value)} />
+          <textarea rows={18} value={body} onChange={(e) => setBody(e.target.value)} />
+          {error && <p className="error">{error}</p>}
+        </div>
+      ) : (
+        <article>
+          <div className="meta">
+            <span className="pill neutral">{CONTENT_TYPE_LABELS[item.type]}</span>
+            {item.toneOfVoice && <span className="pill neutral">{item.toneOfVoice}</span>}
+            {item.keywords.map((k) => (
+              <span key={k} className="pill outline">
+                {k}
+              </span>
+            ))}
+          </div>
+          <h1 className="result-title">{item.title}</h1>
+          <Markdown text={item.body} />
+        </article>
+      )}
+    </div>
+  )
+}
