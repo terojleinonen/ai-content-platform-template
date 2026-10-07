@@ -283,3 +283,8 @@ This is a GitHub template repository. To build your own product on it:
    - **Prompts:** `backend/src/AiContentPlatform.Api/Services/ContentPrompt.cs` (system prompts, content types, editing actions).
 5. Deploy with the Docker image (see Option C in [Quick start](#quick-start)) behind HTTPS, with
    `BEHIND_PROXY=true` and a strong `POSTGRES_PASSWORD`.
+
+## License
+
+[MIT](LICENSE) © 2026 Tero Leinonen. You can use this template for personal and commercial
+projects, including closed-source ones; keep the copyright notice in copies of the code.
