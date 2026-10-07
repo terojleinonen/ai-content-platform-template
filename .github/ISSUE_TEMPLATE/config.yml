@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/terojleinonen/ai-content-platform-template/security/advisories/new
+    about: Report security issues privately, not as a public issue.
+  - name: Contributing guide
+    url: https://github.com/terojleinonen/ai-content-platform-template/blob/main/CONTRIBUTING.md
+    about: Development setup, tests and how pull requests work.

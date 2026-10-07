@@ -1,0 +1,60 @@
+name: Bug report
+description: Something doesn't work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Security issues: please don't file them here; use **Security → Report a vulnerability** instead.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The steps, request/response or brief that triggers it.
+      placeholder: |
+        1. Open Write, choose Blog post
+        2. ...
+    validations:
+      required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: AI provider
+      options:
+        - Mock (no API key)
+        - Anthropic (Claude)
+        - OpenAI
+        - Not related to AI
+    validations:
+      required: true
+  - type: dropdown
+    id: database
+    attributes:
+      label: Database
+      options:
+        - SQLite (default)
+        - PostgreSQL
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: runtime
+    attributes:
+      label: How are you running it?
+      options:
+        - dotnet run (+ npm run dev)
+        - Docker compose
+        - Other (please describe below)
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or error messages
+      description: Remove API keys, passwords and personal data first.
+      render: text
