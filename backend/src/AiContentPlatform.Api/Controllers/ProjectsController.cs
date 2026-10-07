@@ -1,3 +1,4 @@
+using AiContentPlatform.Api.Auth;
 using AiContentPlatform.Api.Data;
 using AiContentPlatform.Api.Domain;
 using AiContentPlatform.Api.Dtos;
@@ -6,29 +7,32 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AiContentPlatform.Api.Controllers;
 
-// TODO: add authentication and scope projects to the signed-in user.
-// Until then every project belongs to the seeded demo user.
+/// <summary>The signed-in user's projects. Other users' projects are reported as not found.</summary>
 [ApiController]
 [Route("api/[controller]")]
 public class ProjectsController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly ICurrentUser _user;
 
-    public ProjectsController(AppDbContext db)
+    public ProjectsController(AppDbContext db, ICurrentUser user)
     {
         _db = db;
+        _user = user;
     }
+
+    private IQueryable<Project> MyProjects => _db.Projects.Where(p => p.OwnerId == _user.RequiredId);
 
     [HttpGet]
     public async Task<IReadOnlyList<ProjectDto>> List(CancellationToken cancellationToken)
     {
-        return await QueryProjects(_db.Projects.OrderByDescending(p => p.CreatedAt), cancellationToken);
+        return await QueryProjects(MyProjects.OrderByDescending(p => p.CreatedAt), cancellationToken);
     }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ProjectDto>> Get(Guid id, CancellationToken cancellationToken)
     {
-        var project = (await QueryProjects(_db.Projects.Where(p => p.Id == id), cancellationToken)).FirstOrDefault();
+        var project = (await QueryProjects(MyProjects.Where(p => p.Id == id), cancellationToken)).FirstOrDefault();
         return project is null ? NotFound() : project;
     }
 
@@ -40,7 +44,7 @@ public class ProjectsController : ControllerBase
             Id = Guid.NewGuid(),
             Name = request.Name.Trim(),
             Description = request.Description?.Trim(),
-            OwnerId = SeedData.DemoUserId
+            OwnerId = _user.RequiredId
         };
 
         _db.Projects.Add(project);
@@ -53,7 +57,7 @@ public class ProjectsController : ControllerBase
     [HttpPut("{id:guid}")]
     public async Task<ActionResult<ProjectDto>> Update(Guid id, [FromBody] SaveProjectRequest request, CancellationToken cancellationToken)
     {
-        var project = await _db.Projects.Include(p => p.ContentItems).FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+        var project = await MyProjects.Include(p => p.ContentItems).FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
         if (project is null) return NotFound();
 
         project.Name = request.Name.Trim();
@@ -67,7 +71,7 @@ public class ProjectsController : ControllerBase
     [HttpPut("{id:guid}/brand-voice")]
     public async Task<ActionResult<ProjectDto>> SaveBrandVoice(Guid id, [FromBody] SaveBrandVoiceRequest request, CancellationToken cancellationToken)
     {
-        var project = await _db.Projects.Include(p => p.ContentItems).FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+        var project = await MyProjects.Include(p => p.ContentItems).FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
         if (project is null) return NotFound();
 
         var brand = new BrandVoice
@@ -87,7 +91,7 @@ public class ProjectsController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
     {
-        var deleted = await _db.Projects.Where(p => p.Id == id).ExecuteDeleteAsync(cancellationToken);
+        var deleted = await MyProjects.Where(p => p.Id == id).ExecuteDeleteAsync(cancellationToken);
         return deleted == 0 ? NotFound() : NoContent();
     }
 
@@ -116,7 +120,7 @@ public class ProjectsController : ControllerBase
     [HttpGet("{id:guid}/content")]
     public async Task<ActionResult<IReadOnlyList<ContentItemDto>>> ListContent(Guid id, CancellationToken cancellationToken)
     {
-        if (!await _db.Projects.AnyAsync(p => p.Id == id, cancellationToken)) return NotFound();
+        if (!await MyProjects.AnyAsync(p => p.Id == id, cancellationToken)) return NotFound();
 
         var items = await _db.ContentItems
             .Where(c => c.ProjectId == id)
@@ -128,7 +132,7 @@ public class ProjectsController : ControllerBase
     [HttpPost("{id:guid}/content")]
     public async Task<ActionResult<ContentItemDto>> AddContent(Guid id, [FromBody] SaveContentItemRequest request, CancellationToken cancellationToken)
     {
-        if (!await _db.Projects.AnyAsync(p => p.Id == id, cancellationToken)) return NotFound();
+        if (!await MyProjects.AnyAsync(p => p.Id == id, cancellationToken)) return NotFound();
 
         var item = new ContentItem { Id = Guid.NewGuid(), ProjectId = id };
         ContentItemsController.Apply(item, request);

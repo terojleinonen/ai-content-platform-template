@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using AiContentPlatform.Api.Auth;
 using AiContentPlatform.Api.Data;
 using AiContentPlatform.Api.Dtos;
 using Microsoft.AspNetCore.Mvc;
@@ -11,13 +12,15 @@ namespace AiContentPlatform.Api.Controllers;
 public class UsageController : ControllerBase
 {
     private readonly AppDbContext _db;
+    private readonly ICurrentUser _user;
 
-    public UsageController(AppDbContext db)
+    public UsageController(AppDbContext db, ICurrentUser user)
     {
         _db = db;
+        _user = user;
     }
 
-    /// <summary>AI usage and estimated cost for the last <paramref name="days"/> days (UTC).</summary>
+    /// <summary>The signed-in user's AI usage and estimated cost for the last <paramref name="days"/> days (UTC).</summary>
     [HttpGet]
     public async Task<UsageReport> Get([FromQuery, Range(1, 365)] int days = 30, CancellationToken cancellationToken = default)
     {
@@ -28,12 +31,13 @@ public class UsageController : ControllerBase
         // Aggregated in memory: portable across SQLite/PostgreSQL, and fine at this app's volume.
         var records = await _db.AiUsage
             .AsNoTracking()
-            .Where(r => r.CreatedAt >= since)
+            .Where(r => r.UserId == _user.RequiredId && r.CreatedAt >= since)
             .OrderByDescending(r => r.CreatedAt)
             .ToListAsync(cancellationToken);
 
         var projectNames = await _db.Projects
             .AsNoTracking()
+            .Where(p => p.OwnerId == _user.RequiredId)
             .ToDictionaryAsync(p => p.Id, p => p.Name, cancellationToken);
         string ProjectName(Guid? id) =>
             id is null ? "No project" : projectNames.GetValueOrDefault(id.Value, "Deleted project");

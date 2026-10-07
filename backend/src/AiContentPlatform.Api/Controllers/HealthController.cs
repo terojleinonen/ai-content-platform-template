@@ -1,10 +1,12 @@
 using AiContentPlatform.Api.Options;
+using Microsoft.AspNetCore.Authorization;
 using AiContentPlatform.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Options;
 
 namespace AiContentPlatform.Api.Controllers;
 
+[AllowAnonymous]
 [ApiController]
 [Route("api/[controller]")]
 public class HealthController : ControllerBase

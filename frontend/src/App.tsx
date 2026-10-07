@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
-import { api } from './api'
+import { api, AUTH_REQUIRED_EVENT } from './api'
 import { ImagesPage } from './pages/ImagesPage'
+import { LoginPage } from './pages/LoginPage'
 import { ProjectsPage } from './pages/ProjectsPage'
 import { UsagePage } from './pages/UsagePage'
 import { WritePage } from './pages/WritePage'
-import type { Health } from './types'
+import type { CurrentUser, Health } from './types'
 
 const PAGES = {
   write: { label: 'Write', component: WritePage },
@@ -22,6 +23,8 @@ const pageFromHash = (): PageKey => {
 export default function App() {
   const [page, setPage] = useState<PageKey>(pageFromHash)
   const [health, setHealth] = useState<Health | null>()
+  // undefined while checking the session, null when signed out.
+  const [user, setUser] = useState<CurrentUser | null>()
 
   useEffect(() => {
     const onHash = () => setPage(pageFromHash())
@@ -31,7 +34,20 @@ export default function App() {
 
   useEffect(() => {
     api.health().then(setHealth, () => setHealth(null))
+    api.me().then(setUser, () => setUser(null))
+
+    const signedOut = () => setUser(null)
+    window.addEventListener(AUTH_REQUIRED_EVENT, signedOut)
+    return () => window.removeEventListener(AUTH_REQUIRED_EVENT, signedOut)
   }, [])
+
+  async function signOut() {
+    await api.logout().catch(() => {})
+    setUser(null)
+  }
+
+  if (user === undefined) return null
+  if (user === null) return <LoginPage onSignedIn={setUser} />
 
   const Page = PAGES[page].component
 
@@ -63,6 +79,12 @@ export default function App() {
               Text: {health.textProvider} · Images: {health.imageProvider}
             </span>
           ) : null}
+          <span className="user" title={user.email}>
+            {user.displayName}
+          </span>
+          <button className="ghost small-button" onClick={signOut}>
+            Sign out
+          </button>
         </div>
       </header>
 

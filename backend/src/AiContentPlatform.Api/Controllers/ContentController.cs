@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using AiContentPlatform.Api.Auth;
 using AiContentPlatform.Api.Data;
 using AiContentPlatform.Api.Dtos;
 using AiContentPlatform.Api.Services;
@@ -23,12 +24,14 @@ public class ContentController : ControllerBase
 
     private readonly IAiTextService _aiTextService;
     private readonly AppDbContext _db;
+    private readonly ICurrentUser _user;
     private readonly ILogger<ContentController> _logger;
 
-    public ContentController(IAiTextService aiTextService, AppDbContext db, ILogger<ContentController> logger)
+    public ContentController(IAiTextService aiTextService, AppDbContext db, ICurrentUser user, ILogger<ContentController> logger)
     {
         _aiTextService = aiTextService;
         _db = db;
+        _user = user;
         _logger = logger;
     }
 
@@ -125,7 +128,7 @@ public class ContentController : ControllerBase
 
         var project = await _db.Projects
             .AsNoTracking()
-            .Where(p => p.Id == projectId)
+            .Where(p => p.Id == projectId && p.OwnerId == _user.RequiredId)
             .Select(p => new { p.Name, p.BrandVoice })
             .FirstOrDefaultAsync(cancellationToken);
         if (project is null) return false;

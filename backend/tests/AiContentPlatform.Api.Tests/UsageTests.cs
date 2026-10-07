@@ -15,7 +15,7 @@ public class UsageRecorderPricingTests
     {
         var options = new AiOptions();
         options.Pricing["claude-sonnet-5-5"] = new ModelPrice { InputPerMTok = 2, OutputPerMTok = 10 };
-        return new UsageRecorder(null!, new StaticOptionsMonitor<AiOptions>(options), NullLogger<UsageRecorder>.Instance);
+        return new UsageRecorder(null!, new StaticOptionsMonitor<AiOptions>(options), new NoUser(), NullLogger<UsageRecorder>.Instance);
     }
 
     [Fact]
@@ -41,6 +41,11 @@ public class UsageRecorderPricingTests
     public void PriceOf_MockIsFreeAndUnknownModelsAreUnpriced(string? model, double? expected) =>
         Assert.Equal(expected, CreateRecorder().PriceOf(new UsageMeter { Model = model, InputTokens = 100 }));
 
+    private sealed class NoUser : AiContentPlatform.Api.Auth.ICurrentUser
+    {
+        public Guid? Id => null;
+    }
+
     private sealed class StaticOptionsMonitor<T>(T value) : Microsoft.Extensions.Options.IOptionsMonitor<T>
     {
         public T CurrentValue => value;
@@ -61,7 +66,7 @@ public class UsageApiTests : IClassFixture<ApiFactory>
 
     public UsageApiTests(ApiFactory factory)
     {
-        _client = factory.CreateClient();
+        _client = factory.CreateUserClientAsync().GetAwaiter().GetResult();
     }
 
     [Fact]
