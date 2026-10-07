@@ -38,7 +38,7 @@ real AI output as soon as you provide an Anthropic or OpenAI key.
 
   | Capability | Mock (default) | Anthropic (Claude) | OpenAI |
   |---|---|---|---|
-  | Text  | ✅ template-based, offline | ✅ Messages API | ✅ Chat Completions |
+  | Text  | ✅ template-based, offline | ✅ official [C# SDK](https://www.nuget.org/packages/Anthropic), streaming | ✅ Chat Completions |
   | Image | ✅ SVG placeholder, offline | – | ✅ Images API (`gpt-image-1`) |
 
 ## Quick start
@@ -163,12 +163,16 @@ Other settings (in `appsettings.json`, overridable via env vars like `Ai__Anthro
 | `Ai:Anthropic:Model` | `claude-sonnet-5-5` |
 | `Ai:Mock:StreamDelayMs` | `25` (simulated typing speed of the mock) |
 | `Ai:Anthropic:MaxTokens` | `2048` |
+| `Ai:Anthropic:ServerSideFallback` | `true`: if Claude's safety classifiers decline a request, Anthropic re-serves it on its recommended fallback model (`fallbacks: "default"`; Claude API only, sent for models that support it) |
 | `Ai:OpenAI:Model` / `ImageModel` | `gpt-4.1-mini` / `gpt-image-1` |
 | `Ai:OpenAI:BaseUrl` | `https://api.openai.com/` (point at any OpenAI-compatible endpoint) |
 | `Ai:Pricing:<model>` | USD per million input/output tokens, used for cost estimates (Claude models preconfigured) |
 | `ConnectionStrings:Default` | `Data Source=ai-content-platform.db` |
 
-Provider errors are returned as HTTP 502 `ProblemDetails` and shown in the UI.
+Provider errors are returned as HTTP 502 `ProblemDetails` and shown in the UI. The Anthropic SDK
+retries rate limits and server errors (twice) before reporting them. A request Claude declines
+(`stop_reason: "refusal"`) is reported as an error naming the category, and any partial text is
+discarded; usage is recorded against the model that actually served the request.
 
 ## API
 

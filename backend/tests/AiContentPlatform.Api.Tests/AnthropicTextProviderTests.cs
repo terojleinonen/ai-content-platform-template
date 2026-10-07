@@ -3,14 +3,19 @@ using System.Text.Json;
 using AiContentPlatform.Api.Dtos;
 using AiContentPlatform.Api.Options;
 using AiContentPlatform.Api.Services;
+using Anthropic;
 
 namespace AiContentPlatform.Api.Tests;
 
+/// <summary>
+/// Runs the SDK-based provider against recorded Messages API streams, checking both what it
+/// sends on the wire and how it reads text, usage, refusals and errors.
+/// </summary>
 public class AnthropicTextProviderTests
 {
-    private const string Stream = """
+    private const string StreamTemplate = """
         event: message_start
-        data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"usage":{"input_tokens":120,"cache_read_input_tokens":30,"output_tokens":1}}}
+        data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","model":"MODEL","content":[],"stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":120,"cache_read_input_tokens":30,"cache_creation_input_tokens":0,"output_tokens":1}}}
 
         event: content_block_start
         data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
@@ -22,13 +27,13 @@ public class AnthropicTextProviderTests
         data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"# Hello"}}
 
         event: content_block_delta
-        data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"\n\nWorld body."}}
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"TEXT"}}
 
         event: content_block_stop
         data: {"type":"content_block_stop","index":0}
 
         event: message_delta
-        data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}
+        data: {"type":"message_delta","delta":{"stop_reason":"STOP","stop_sequence":nullDETAILS},"usage":{"output_tokens":7}}
 
         event: message_stop
         data: {"type":"message_stop"}
@@ -36,38 +41,96 @@ public class AnthropicTextProviderTests
 
         """;
 
-    [Fact]
-    public async Task StreamAsync_SendsStreamingRequestAndYieldsTextDeltas()
-    {
-        var handler = new StubHandler(HttpStatusCode.OK, Stream, "text/event-stream");
-        var provider = CreateProvider(handler);
+    private static string Stream(string model, string text, string stopReason = "end_turn", string? stopDetails = null) =>
+        StreamTemplate
+            .Replace("MODEL", model)
+            .Replace("TEXT", text)
+            .Replace("STOP", stopReason)
+            .Replace("DETAILS", stopDetails is null ? "" : $",\"stop_details\":{stopDetails}");
 
-        var generateRequest = new GenerateContentRequest { Prompt = "Say hello" };
-        var chunks = await provider.StreamContentAsync(generateRequest, TestContext.Current.CancellationToken)
-            .ToListAsync(TestContext.Current.CancellationToken);
+    private static Task<List<string>> Run(AnthropicTextProvider provider, GenerateContentRequest request) =>
+        provider.StreamContentAsync(request, TestContext.Current.CancellationToken).ToListAsync(TestContext.Current.CancellationToken);
+
+    [Fact]
+    public async Task Streams_TextAndUsage_AndSendsTheExpectedRequest()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, Stream("claude-sonnet-5-5", "\\n\\nWorld body."), "text/event-stream");
+        var provider = CreateProvider(handler);
+        var request = new GenerateContentRequest { Prompt = "Say hello" };
+
+        var chunks = await Run(provider, request);
 
         Assert.Equal(["# Hello", "\n\nWorld body."], chunks);
-        var usage = generateRequest.Usage;
-        Assert.Equal("test-model", usage.Model);
-        Assert.Equal(120, usage.InputTokens);
-        Assert.Equal(30, usage.CacheReadTokens);
-        Assert.Equal(7, usage.OutputTokens); // final count from message_delta
-        Assert.False(usage.Estimated);
+        Assert.Equal(("claude-sonnet-5-5", 120, 30, 7, true), (request.Usage.Model, request.Usage.InputTokens, request.Usage.CacheReadTokens, request.Usage.OutputTokens, request.Usage.OutputFinal));
 
-        var request = handler.LastRequest!;
-        Assert.Equal("https://api.test/v1/messages", request.RequestUri!.ToString());
-        Assert.Equal("test-key", request.Headers.GetValues("x-api-key").Single());
-        Assert.Equal("2023-06-01", request.Headers.GetValues("anthropic-version").Single());
+        var sent = handler.LastRequest!;
+        Assert.StartsWith("https://api.test/v1/messages", sent.RequestUri!.ToString());
+        Assert.Equal("test-key", sent.Headers.GetValues("x-api-key").Single());
+        Assert.Contains("server-side-fallback-2026-07-01", sent.Headers.GetValues("anthropic-beta"));
 
         using var body = JsonDocument.Parse(handler.LastBody!);
-        Assert.Equal("test-model", body.RootElement.GetProperty("model").GetString());
-        Assert.Equal(512, body.RootElement.GetProperty("max_tokens").GetInt32());
-        Assert.True(body.RootElement.GetProperty("stream").GetBoolean());
-        Assert.Contains("Say hello", body.RootElement.GetProperty("messages")[0].GetProperty("content").GetString());
+        var root = body.RootElement;
+        Assert.Equal("claude-sonnet-5-5", root.GetProperty("model").GetString());
+        Assert.Equal(512, root.GetProperty("max_tokens").GetInt32());
+        Assert.True(root.GetProperty("stream").GetBoolean());
+        Assert.Equal("default", root.GetProperty("fallbacks").GetString());
+        Assert.Contains("content writer", root.GetProperty("system").GetString());
+        Assert.Contains("Say hello", root.GetProperty("messages")[0].GetProperty("content").GetString());
     }
 
     [Fact]
-    public async Task StreamAsync_ThrowsOnErrorEvent()
+    public async Task ServedByFallbackModel_IsRecordedForPricing()
+    {
+        var provider = CreateProvider(new StubHandler(HttpStatusCode.OK, Stream("claude-sonnet-5", " text"), "text/event-stream"));
+        var request = new GenerateContentRequest { Prompt = "x" };
+
+        await Run(provider, request);
+
+        Assert.Equal("claude-sonnet-5", request.Usage.Model);
+    }
+
+    [Theory]
+    [InlineData("claude-sonnet-5-5", false)] // switched off
+    [InlineData("claude-haiku-4-5", true)]   // model without the "default" fallback form
+    public async Task Fallback_IsOnlySentWhenEnabledAndSupported(string model, bool enabled)
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, Stream(model, " text"), "text/event-stream");
+
+        await Run(CreateProvider(handler, model, enabled), new GenerateContentRequest { Prompt = "x" });
+
+        using var body = JsonDocument.Parse(handler.LastBody!);
+        Assert.False(body.RootElement.TryGetProperty("fallbacks", out _));
+        Assert.False(handler.LastRequest!.Headers.Contains("anthropic-beta") &&
+                     handler.LastRequest.Headers.GetValues("anthropic-beta").Any(v => v.Contains("server-side-fallback")));
+    }
+
+    [Fact]
+    public async Task Refusal_ThrowsWithCategory_EvenAfterPartialText()
+    {
+        var provider = CreateProvider(new StubHandler(HttpStatusCode.OK,
+            Stream("claude-sonnet-5-5", " partial", "refusal", """{"type":"refusal","category":"cyber","explanation":null}"""), "text/event-stream"));
+        var request = new GenerateContentRequest { Prompt = "x" };
+
+        var ex = await Assert.ThrowsAsync<AiProviderException>(() => Run(provider, request));
+
+        Assert.Contains("declined", ex.Message);
+        Assert.Contains("cyber", ex.Message);
+        Assert.Equal(7, request.Usage.OutputTokens); // the partial output is still billed and metered
+    }
+
+    [Fact]
+    public async Task HttpError_BecomesProviderError()
+    {
+        var provider = CreateProvider(new StubHandler(HttpStatusCode.Unauthorized,
+            """{"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}"""));
+
+        var ex = await Assert.ThrowsAsync<AiProviderException>(() => Run(provider, new GenerateContentRequest { Prompt = "x" }));
+
+        Assert.Contains("invalid x-api-key", ex.Message);
+    }
+
+    [Fact]
+    public async Task ErrorEventMidStream_BecomesProviderError()
     {
         const string errorStream = """
             event: error
@@ -77,32 +140,24 @@ public class AnthropicTextProviderTests
             """;
         var provider = CreateProvider(new StubHandler(HttpStatusCode.OK, errorStream, "text/event-stream"));
 
-        var ex = await Assert.ThrowsAsync<AiProviderException>(() =>
-            provider.StreamContentAsync(new GenerateContentRequest { Prompt = "x" }, TestContext.Current.CancellationToken)
-                .ToListAsync(TestContext.Current.CancellationToken));
+        var ex = await Assert.ThrowsAsync<AiProviderException>(() => Run(provider, new GenerateContentRequest { Prompt = "x" }));
 
         Assert.Contains("Overloaded", ex.Message);
     }
 
-    [Fact]
-    public async Task StreamAsync_ThrowsOnHttpError()
-    {
-        var provider = CreateProvider(new StubHandler(HttpStatusCode.Unauthorized, """{"error":"invalid x-api-key"}"""));
-
-        var ex = await Assert.ThrowsAsync<AiProviderException>(() =>
-            provider.StreamContentAsync(new GenerateContentRequest { Prompt = "x" }, TestContext.Current.CancellationToken)
-                .ToListAsync(TestContext.Current.CancellationToken));
-
-        Assert.Contains("401", ex.Message);
-    }
-
-    private static AnthropicTextProvider CreateProvider(StubHandler handler)
+    private static AnthropicTextProvider CreateProvider(StubHandler handler, string model = "claude-sonnet-5-5", bool fallback = true)
     {
         var options = Microsoft.Extensions.Options.Options.Create(new AiOptions
         {
-            Anthropic = { ApiKey = "test-key", Model = "test-model", MaxTokens = 512 }
+            Anthropic = { ApiKey = "test-key", Model = model, MaxTokens = 512, ServerSideFallback = fallback }
         });
-        var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.test/") };
-        return new AnthropicTextProvider(http, options);
+        var client = new AnthropicClient
+        {
+            ApiKey = "test-key",
+            BaseUrl = "https://api.test",
+            HttpClient = new HttpClient(handler),
+            MaxRetries = 0
+        };
+        return new AnthropicTextProvider(client, options);
     }
 }
