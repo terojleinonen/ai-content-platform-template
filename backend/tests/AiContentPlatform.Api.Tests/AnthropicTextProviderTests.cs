@@ -79,6 +79,56 @@ public class AnthropicTextProviderTests
     }
 
     [Fact]
+    public async Task Defaults_AreOpus55_MediumEffort_RoomForThinking_AndFallback()
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, Stream("claude-opus-5-5", " text"), "text/event-stream");
+        var options = Microsoft.Extensions.Options.Options.Create(new AiOptions { Anthropic = { ApiKey = "test-key" } });
+        var provider = new AnthropicTextProvider(CreateClient(handler), options);
+
+        await Run(provider, new GenerateContentRequest { Prompt = "x" });
+
+        using var body = JsonDocument.Parse(handler.LastBody!);
+        var root = body.RootElement;
+        Assert.Equal("claude-opus-5-5", root.GetProperty("model").GetString());
+        Assert.Equal(16000, root.GetProperty("max_tokens").GetInt32());
+        Assert.Equal("medium", root.GetProperty("output_config").GetProperty("effort").GetString());
+        Assert.Equal("default", root.GetProperty("fallbacks").GetString());
+        Assert.False(root.TryGetProperty("thinking", out _)); // Opus 5.5 always thinks; disabling it is a 400
+    }
+
+    [Theory]
+    [InlineData("low", "low")]
+    [InlineData("HIGH", "high")]
+    [InlineData("max", "max")]
+    public async Task ConfiguredEffort_IsSent(string configured, string sent)
+    {
+        var handler = new StubHandler(HttpStatusCode.OK, Stream("claude-opus-5-5", " text"), "text/event-stream");
+
+        await Run(CreateProvider(handler, effort: configured), new GenerateContentRequest { Prompt = "x" });
+
+        using var body = JsonDocument.Parse(handler.LastBody!);
+        Assert.Equal(sent, body.RootElement.GetProperty("output_config").GetProperty("effort").GetString());
+    }
+
+    [Fact]
+    public async Task UnknownEffort_IsRejected()
+    {
+        var provider = CreateProvider(new StubHandler(HttpStatusCode.OK, Stream("claude-opus-5-5", " text"), "text/event-stream"), effort: "extreme");
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Run(provider, new GenerateContentRequest { Prompt = "x" }));
+    }
+
+    [Fact]
+    public async Task CutOffAtTokenLimit_IsReportedNotPassedOffAsComplete()
+    {
+        var provider = CreateProvider(new StubHandler(HttpStatusCode.OK, Stream("claude-opus-5-5", " half a sent", "max_tokens"), "text/event-stream"));
+
+        var ex = await Assert.ThrowsAsync<AiProviderException>(() => Run(provider, new GenerateContentRequest { Prompt = "x" }));
+
+        Assert.Contains("length limit", ex.Message);
+    }
+
+    [Fact]
     public async Task ServedByFallbackModel_IsRecordedForPricing()
     {
         var provider = CreateProvider(new StubHandler(HttpStatusCode.OK, Stream("claude-sonnet-5", " text"), "text/event-stream"));
@@ -145,19 +195,20 @@ public class AnthropicTextProviderTests
         Assert.Contains("Overloaded", ex.Message);
     }
 
-    private static AnthropicTextProvider CreateProvider(StubHandler handler, string model = "claude-sonnet-5-5", bool fallback = true)
+    private static AnthropicTextProvider CreateProvider(StubHandler handler, string model = "claude-sonnet-5-5", bool fallback = true, string effort = "medium")
     {
         var options = Microsoft.Extensions.Options.Options.Create(new AiOptions
         {
-            Anthropic = { ApiKey = "test-key", Model = model, MaxTokens = 512, ServerSideFallback = fallback }
+            Anthropic = { ApiKey = "test-key", Model = model, MaxTokens = 512, ServerSideFallback = fallback, Effort = effort }
         });
-        var client = new AnthropicClient
-        {
-            ApiKey = "test-key",
-            BaseUrl = "https://api.test",
-            HttpClient = new HttpClient(handler),
-            MaxRetries = 0
-        };
-        return new AnthropicTextProvider(client, options);
+        return new AnthropicTextProvider(CreateClient(handler), options);
     }
+
+    private static AnthropicClient CreateClient(StubHandler handler) => new()
+    {
+        ApiKey = "test-key",
+        BaseUrl = "https://api.test",
+        HttpClient = new HttpClient(handler),
+        MaxRetries = 0
+    };
 }

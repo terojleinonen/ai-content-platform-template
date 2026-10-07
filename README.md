@@ -160,10 +160,11 @@ Other settings (in `appsettings.json`, overridable via env vars like `Ai__Anthro
 |---|---|
 | `Ai:TextProvider` | `Auto` (`Mock`, `Anthropic`, `OpenAI`) |
 | `Ai:ImageProvider` | `Auto` (`Mock`, `OpenAI`) |
-| `Ai:Anthropic:Model` | `claude-sonnet-5-5` |
-| `Ai:Mock:StreamDelayMs` | `25` (simulated typing speed of the mock) |
-| `Ai:Anthropic:MaxTokens` | `2048` |
+| `Ai:Anthropic:Model` | `claude-opus-5-5` (Anthropic's most capable default; `claude-sonnet-5-5` costs half as much) |
+| `Ai:Anthropic:Effort` | `medium`: how much Claude thinks before writing (`low`, `medium`, `high`, `max`); the main lever for cost and latency |
+| `Ai:Anthropic:MaxTokens` | `16000`: cap for thinking plus text; only generated tokens are billed, and a cut-off response is reported as an error |
 | `Ai:Anthropic:ServerSideFallback` | `true`: if Claude's safety classifiers decline a request, Anthropic re-serves it on its recommended fallback model (`fallbacks: "default"`; Claude API only, sent for models that support it) |
+| `Ai:Mock:StreamDelayMs` | `25` (simulated typing speed of the mock) |
 | `Ai:OpenAI:Model` / `ImageModel` | `gpt-4.1-mini` / `gpt-image-1` |
 | `Ai:OpenAI:BaseUrl` | `https://api.openai.com/` (point at any OpenAI-compatible endpoint) |
 | `Ai:Pricing:<model>` | USD per million input/output tokens, used for cost estimates (Claude models preconfigured) |
