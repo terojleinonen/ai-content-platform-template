@@ -3,6 +3,9 @@
 Thanks for helping improve the AI Content Platform template! Bug reports, fixes, documentation
 and new features are all welcome.
 
+This project follows the [Code of Conduct](CODE_OF_CONDUCT.md); by participating you agree to
+uphold it.
+
 ## Reporting bugs and ideas
 
 Open an [issue](https://github.com/terojleinonen/ai-content-platform-template/issues) with what
