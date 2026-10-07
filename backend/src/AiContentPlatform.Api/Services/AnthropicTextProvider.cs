@@ -36,6 +36,7 @@ public class AnthropicTextProvider : LlmTextProvider
         {
             Model = _options.Model,
             MaxTokens = _options.MaxTokens,
+            OutputConfig = new BetaOutputConfig { Effort = ParseEffort(_options.Effort) },
             System = systemPrompt,
             Messages = [new() { Role = Role.User, Content = userPrompt }],
         };
@@ -80,6 +81,13 @@ public class AnthropicTextProvider : LlmTextProvider
         if (stopReason == "refusal")
         {
             throw new AiProviderException(Name, RefusalMessage(refusalCategory));
+        }
+
+        // Cut off at the token limit: report it rather than passing truncated content off as complete.
+        if (stopReason == "max_tokens")
+        {
+            throw new AiProviderException(Name,
+                $"The response reached the length limit ({_options.MaxTokens} tokens, Ai:Anthropic:MaxTokens) and was cut off. Raise the limit or lower the effort.");
         }
     }
 
@@ -135,6 +143,15 @@ public class AnthropicTextProvider : LlmTextProvider
         }
         return text;
     }
+
+    private static Effort ParseEffort(string? effort) => effort?.Trim().ToLowerInvariant() switch
+    {
+        "low" => Effort.Low,
+        "medium" or null or "" => Effort.Medium,
+        "high" => Effort.High,
+        "max" => Effort.Max,
+        _ => throw new InvalidOperationException($"Unknown Ai:Anthropic:Effort '{effort}'. Use low, medium, high or max.")
+    };
 
     private static string RefusalMessage(string? category) => category switch
     {

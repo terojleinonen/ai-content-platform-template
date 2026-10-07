@@ -36,8 +36,19 @@ public class MockOptions
 public class AnthropicOptions
 {
     public string? ApiKey { get; set; }
-    public string Model { get; set; } = "claude-sonnet-5-5";
-    public int MaxTokens { get; set; } = 2048;
+    public string Model { get; set; } = "claude-opus-5-5";
+
+    /// <summary>
+    /// Upper bound for thinking plus the written text (current models think before writing).
+    /// Only tokens actually generated are billed, so this is a safety cap, not a target.
+    /// </summary>
+    public int MaxTokens { get; set; } = 16000;
+
+    /// <summary>
+    /// How much Claude thinks: "low", "medium", "high" or "max". Set explicitly because
+    /// model defaults differ (Opus 5.5 defaults to medium, Sonnet 5.5 to high).
+    /// </summary>
+    public string Effort { get; set; } = "medium";
     public string BaseUrl { get; set; } = "https://api.anthropic.com/";
 
     /// <summary>
