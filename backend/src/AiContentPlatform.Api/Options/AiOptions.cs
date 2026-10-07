@@ -39,6 +39,12 @@ public class AnthropicOptions
     public string Model { get; set; } = "claude-sonnet-5-5";
     public int MaxTokens { get; set; } = 2048;
     public string BaseUrl { get; set; } = "https://api.anthropic.com/";
+
+    /// <summary>
+    /// Re-serve safety-classifier declines on Anthropic's recommended fallback model
+    /// (<c>fallbacks: "default"</c>). Claude API only; sent for models that support it.
+    /// </summary>
+    public bool ServerSideFallback { get; set; } = true;
 }
 
 public class OpenAiOptions

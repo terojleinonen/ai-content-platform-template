@@ -101,8 +101,13 @@ static void ConfigureAiClient(HttpClient client, string baseUrl)
     client.Timeout = TimeSpan.FromMinutes(3);
 }
 
-builder.Services.AddHttpClient<AnthropicTextProvider>((sp, c) =>
-    ConfigureAiClient(c, sp.GetRequiredService<IOptions<AiOptions>>().Value.Anthropic.BaseUrl));
+// Official Anthropic SDK client (thread-safe, shared). It retries 429/5xx itself.
+builder.Services.AddSingleton(sp =>
+{
+    var anthropic = sp.GetRequiredService<IOptions<AiOptions>>().Value.Anthropic;
+    return new Anthropic.AnthropicClient { ApiKey = anthropic.ApiKey, BaseUrl = anthropic.BaseUrl.TrimEnd('/') };
+});
+builder.Services.AddTransient<AnthropicTextProvider>();
 builder.Services.AddHttpClient<OpenAiTextProvider>((sp, c) =>
     ConfigureAiClient(c, sp.GetRequiredService<IOptions<AiOptions>>().Value.OpenAI.BaseUrl));
 builder.Services.AddHttpClient<OpenAiImageService>((sp, c) =>

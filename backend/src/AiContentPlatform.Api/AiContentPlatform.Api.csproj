@@ -6,6 +6,7 @@
     <UserSecretsId>ai-content-platform-api</UserSecretsId>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Anthropic" Version="12.54.0" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.12" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="10.0.12" />
     <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.12" />
