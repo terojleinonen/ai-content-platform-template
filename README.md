@@ -6,6 +6,9 @@ ASP.NET Core (.NET 10) API + React/Vite frontend, with pluggable AI providers.
 It runs **out of the box with no API keys** (built-in mock generators), and switches to
 real AI output as soon as you provide an Anthropic or OpenAI key.
 
+To start your own project from it, click **Use this template** on GitHub
+([details](#start-your-own-project-from-this-template)).
+
 ## Features
 
 - **Accounts** – email + password sign-in (ASP.NET Core Identity, secure HTTP-only cookie), plus
@@ -262,7 +265,21 @@ starts the compose stack and runs `scripts/smoke-test.sh` against it.
 - Persist generated images to blob storage instead of returning `data:` URIs.
 - A deployment pipeline (push the image to a registry, deploy behind HTTPS).
 
----
+## Start your own project from this template
 
-This repo is designed as a **GitHub Template Repository** – push it to GitHub and enable
-"Use this template".
+This is a GitHub template repository. To build your own product on it:
+
+1. Create your copy: click **Use this template → Create a new repository** on GitHub, or
+   ```bash
+   gh repo create my-content-app --template terojleinonen/ai-content-platform-template --private --clone
+   ```
+   The new repository starts with a clean history.
+2. Run it (see [Quick start](#quick-start)); it works without any API keys using the mock AI.
+3. Create your account first: the first account takes over the seeded demo project.
+4. Make it yours:
+   - **Name and branding:** `frontend/index.html` (page title, icon) and the header in `frontend/src/App.tsx`.
+   - **Demo data:** `backend/src/AiContentPlatform.Api/Data/SeedData.cs` (the Acme Coffee project and its brand voice).
+   - **AI setup:** add your API key with `dotnet user-secrets` and choose the model and effort (see [Using a real AI provider](#using-a-real-ai-provider)).
+   - **Prompts:** `backend/src/AiContentPlatform.Api/Services/ContentPrompt.cs` (system prompts, content types, editing actions).
+5. Deploy with the Docker image (see Option C in [Quick start](#quick-start)) behind HTTPS, with
+   `BEHIND_PROXY=true` and a strong `POSTGRES_PASSWORD`.
