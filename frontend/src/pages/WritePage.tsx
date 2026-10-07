@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
 import { api, parseKeywords } from '../api'
 import { AiTools, TRANSFORM_LABELS, type TransformOptions } from '../components/AiTools'
+import { BrandCheckPanel } from '../components/BrandCheckPanel'
 import { Markdown } from '../components/Markdown'
 import { SeoPanel } from '../components/SeoPanel'
 import { useContentStream } from '../hooks/useContentStream'
@@ -71,7 +72,10 @@ export function WritePage() {
     toneOfVoice: tone || undefined,
     language: language || undefined,
     keywords: parseKeywords(keywords),
+    projectId: projectId || undefined,
   })
+
+  const project = projects.find((p) => p.id === projectId)
 
   function resetOutput() {
     setError(undefined)
@@ -138,7 +142,15 @@ export function WritePage() {
 
     const outcome = await stream.run((onDelta, signal) =>
       api.transformContentStream(
-        { action, title: before.title, body: before.body, type, keywords: parseKeywords(keywords), ...options },
+        {
+          action,
+          title: before.title,
+          body: before.body,
+          type,
+          keywords: parseKeywords(keywords),
+          projectId: projectId || undefined,
+          ...options,
+        },
         onDelta,
         signal,
       ),
@@ -178,8 +190,7 @@ export function WritePage() {
         toneOfVoice: tone || undefined,
         keywords: parseKeywords(keywords),
       })
-      const name = projects.find((p) => p.id === projectId)?.name
-      setSaveState(`Saved to “${name}”`)
+      setSaveState(`Saved to “${project?.name}”`)
     } catch (err) {
       setSaveState(`Save failed: ${(err as Error).message}`)
     }
@@ -196,6 +207,28 @@ export function WritePage() {
     <div className="split">
       <form className="card form" onSubmit={generate}>
         <h2>Content brief</h2>
+
+        <label>
+          Project
+          <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+            <option value="">No project</option>
+            {projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+                {p.brandVoice ? ' · brand voice' : ''}
+              </option>
+            ))}
+          </select>
+          {project?.brandVoice ? (
+            <span className="brand-hint on" title={project.brandVoice.voice ?? undefined}>
+              ✓ Using this project’s brand voice
+            </span>
+          ) : project ? (
+            <span className="brand-hint">
+              No brand voice yet. <a href="#/projects">Add one in Projects</a>
+            </span>
+          ) : null}
+        </label>
 
         <label>
           Content type
@@ -380,17 +413,18 @@ export function WritePage() {
             ) : (
               <SeoPanel wordCount={result.wordCount} scores={result.keywordScores} />
             )}
+            {result.brandCheck && <BrandCheckPanel check={result.brandCheck} />}
 
             <div className="save-bar">
-              <select value={projectId} onChange={(e) => setProjectId(e.target.value)} disabled={!projects.length}>
-                {projects.length === 0 && <option value="">No projects yet</option>}
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
-              </select>
-              <button type="button" className="primary" onClick={save} disabled={!projectId}>
+              {project ? (
+                <span className="muted small">
+                  Project: <strong>{project.name}</strong>
+                </span>
+              ) : (
+                <span className="muted small">Choose a project in the brief to save this.</span>
+              )}
+              <div className="spacer" />
+              <button type="button" className="primary" onClick={save} disabled={!project}>
                 Save to project
               </button>
             </div>

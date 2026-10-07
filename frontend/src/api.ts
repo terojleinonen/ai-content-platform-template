@@ -1,4 +1,5 @@
 import type {
+  BrandVoice,
   ContentItem,
   GenerateContentRequest,
   GenerateContentResponse,
@@ -122,6 +123,7 @@ export const api = {
   createProject: (name: string, description?: string) =>
     request<Project>('POST', '/api/projects', { name, description }),
   deleteProject: (id: string) => request<void>('DELETE', `/api/projects/${id}`),
+  saveBrandVoice: (id: string, brand: BrandVoice) => request<Project>('PUT', `/api/projects/${id}/brand-voice`, brand),
 
   listContent: (projectId: string) => request<ContentItem[]>('GET', `/api/projects/${projectId}/content`),
   addContent: (projectId: string, item: SaveContentItem) =>

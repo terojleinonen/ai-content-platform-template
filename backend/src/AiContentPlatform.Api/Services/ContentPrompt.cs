@@ -56,6 +56,7 @@ public static class ContentPrompt
         if (request.Variant > 0)
             sb.AppendLine($"Angle: {VariantAngles[(request.Variant - 1) % VariantAngles.Length]}");
 
+        AppendBrand(sb, request.Brand);
         return sb.ToString().TrimEnd();
     }
 
@@ -69,6 +70,7 @@ public static class ContentPrompt
         if (keywords is { Length: > 0 })
             sb.AppendLine($"SEO keywords to keep: {string.Join(", ", keywords)}");
 
+        AppendBrand(sb, request.Brand);
         sb.AppendLine();
         sb.AppendLine("Content to edit:");
         sb.AppendLine("<content>");
@@ -78,6 +80,35 @@ public static class ContentPrompt
         sb.AppendLine("</content>");
 
         return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// Adds the project's brand guidelines. Explicit choices in the request (tone, audience, an
+    /// editing task) take precedence over the brand defaults.
+    /// </summary>
+    private static void AppendBrand(StringBuilder sb, BrandContext? brand)
+    {
+        if (brand is null || brand.Voice.IsEmpty) return;
+
+        var voice = brand.Voice;
+        sb.AppendLine();
+        sb.AppendLine($"Brand guidelines for \"{brand.ProjectName}\" (follow them unless the request above says otherwise):");
+        sb.AppendLine("<brand>");
+        if (!string.IsNullOrWhiteSpace(voice.Voice))
+            sb.AppendLine($"Voice: {voice.Voice.Trim()}");
+        if (!string.IsNullOrWhiteSpace(voice.TargetAudience))
+            sb.AppendLine($"Default audience: {voice.TargetAudience.Trim()}");
+        if (!string.IsNullOrWhiteSpace(voice.KeyFacts))
+        {
+            sb.AppendLine("Key facts (the only product facts you may state; never invent others):");
+            foreach (var fact in voice.KeyFacts.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                sb.AppendLine($"- {fact.TrimStart('-', ' ')}");
+        }
+        if (voice.PreferredTerms.Count > 0)
+            sb.AppendLine($"Preferred terms (use where natural): {string.Join(", ", voice.PreferredTerms)}");
+        if (voice.AvoidTerms.Count > 0)
+            sb.AppendLine($"Never use these words or phrases: {string.Join(", ", voice.AvoidTerms)}");
+        sb.AppendLine("</brand>");
     }
 
     private static string DescribeTask(TransformContentRequest request) => request.Action switch

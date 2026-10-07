@@ -19,8 +19,24 @@ export interface Health {
   imageProvider: string
 }
 
+export interface BrandVoice {
+  voice?: string | null
+  targetAudience?: string | null
+  keyFacts?: string | null
+  preferredTerms: string[]
+  avoidTerms: string[]
+}
+
+export interface BrandCheck {
+  projectName: string
+  avoidTermsFound: string[]
+  preferredTermsUsed: string[]
+  preferredTermsMissing: string[]
+}
+
 export interface GenerateContentRequest {
   prompt: string
+  projectId?: string
   type: ContentType
   title?: string
   targetAudience?: string
@@ -36,6 +52,7 @@ export interface GenerateContentResponse {
   keywordScores?: Record<string, number>
   wordCount: number
   provider: string
+  brandCheck?: BrandCheck | null
 }
 
 export const TRANSFORM_ACTIONS = ['Improve', 'Shorten', 'Expand', 'ChangeTone', 'Translate', 'Custom'] as const
@@ -50,6 +67,7 @@ export interface TransformContentRequest {
   language?: string
   instruction?: string
   keywords?: string[]
+  projectId?: string
 }
 
 export interface GenerateImageRequest {
@@ -71,6 +89,7 @@ export interface Project {
   description?: string
   createdAt: string
   contentCount: number
+  brandVoice?: BrandVoice | null
 }
 
 export interface ContentItem {

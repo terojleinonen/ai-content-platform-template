@@ -52,10 +52,15 @@ public partial class MockTextProvider : ITextGenerationProvider
     {
         var topic = request.Prompt.Trim().TrimEnd('.', '!', '?');
         var title = string.IsNullOrWhiteSpace(request.Title) ? MakeTitle(topic, request.Type, request.Variant) : request.Title.Trim();
-        var audience = string.IsNullOrWhiteSpace(request.TargetAudience) ? "readers" : request.TargetAudience.Trim();
+        var brand = request.Brand?.Voice;
+        var audience = Decapitalize(FirstNonEmpty(request.TargetAudience, brand?.TargetAudience) ?? "readers");
         var keywords = request.Keywords?.Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => k.Trim()).ToList() ?? new();
+        if (keywords.Count == 0 && brand is not null)
+        {
+            keywords = brand.PreferredTerms.ToList();
+        }
         var kw = (int i) => keywords.Count == 0 ? Decapitalize(topic) : keywords[i % keywords.Count];
-        var opener = Opener(request.ToneOfVoice, request.Variant);
+        var opener = Opener(FirstNonEmpty(request.ToneOfVoice, ToneFromBrandVoice(brand?.Voice)), request.Variant);
 
         var body = request.Type switch
         {
@@ -113,6 +118,13 @@ public partial class MockTextProvider : ITextGenerationProvider
                 {Capitalize(topic)} doesn't have to be complicated. With a focused plan and the right tools for {kw(0)}, you can see progress within weeks.
                 """
         };
+
+        // Show that key brand facts are used: weave in the first one.
+        var fact = brand?.KeyFacts?.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).FirstOrDefault();
+        if (fact is not null && request.Type != ContentType.SocialPost)
+        {
+            body = body.TrimEnd() + $"\n\n**Good to know:** {fact.TrimStart('-', ' ').TrimEnd('.')}.";
+        }
 
         // Reference the language so it's visible that the mock ignores it.
         if (!string.IsNullOrWhiteSpace(request.Language) &&
@@ -253,6 +265,22 @@ public partial class MockTextProvider : ITextGenerationProvider
             _ => "Here's something worth your attention."
         }
     };
+
+    private static string? FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v))?.Trim();
+
+    /// <summary>Maps a free-text brand voice description to one of the mock's tones.</summary>
+    private static string? ToneFromBrandVoice(string? voice)
+    {
+        if (string.IsNullOrWhiteSpace(voice)) return null;
+
+        var v = voice.ToLowerInvariant();
+        if (v.Contains("playful") || v.Contains("fun") || v.Contains("witty")) return "playful";
+        if (v.Contains("friendly") || v.Contains("warm") || v.Contains("casual")) return "friendly";
+        if (v.Contains("professional") || v.Contains("formal")) return "professional";
+        if (v.Contains("bold") || v.Contains("persuasive")) return "persuasive";
+        return null;
+    }
 
     private static string Capitalize(string s) =>
         string.IsNullOrEmpty(s) ? s : char.ToUpper(s[0], CultureInfo.InvariantCulture) + s[1..];

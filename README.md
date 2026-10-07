@@ -16,6 +16,9 @@ real AI output as soon as you provide an Anthropic or OpenAI key.
   ("add a call to action"), on fresh results (with undo) and on saved content (review, then save or cancel).
 - **SEO insights** – word count and keyword density per keyword (multi-word phrases supported),
   rated *missing / low / good / too high*.
+- **Brand voice per project** – voice, default audience, key facts, preferred and banned terms. They're
+  added to every prompt for that project (generation, variants, AI tools), and a deterministic
+  **brand check** flags banned terms in the output and shows which preferred terms were used.
 - **Projects** – organize saved content; view, edit and delete items (SQLite via EF Core).
 - **Images** – generate images from a prompt with style and format options.
 - **Pluggable AI providers**
@@ -51,8 +54,17 @@ npm install
 npm run dev
 ```
 
-On first start the API creates `ai-content-platform.db` (SQLite) and seeds a demo project.
-Delete the file to reset the demo data.
+On first start the API creates `ai-content-platform.db` (SQLite), applies EF Core migrations and
+seeds a demo project with a brand voice. Delete the file to reset the demo data.
+
+Schema changes are EF Core migrations in `Data/Migrations`, applied automatically on startup:
+
+```bash
+cd backend && dotnet tool restore
+dotnet ef migrations add <Name> --project src/AiContentPlatform.Api --output-dir Data/Migrations
+```
+
+Databases created by earlier versions of this template (before migrations) are upgraded in place.
 
 ## Using a real AI provider
 
@@ -91,7 +103,7 @@ Provider errors are returned as HTTP 502 `ProblemDetails` and shown in the UI.
 | Method | Route | Description |
 |---|---|---|
 | GET | `/api/health` | Status and active AI providers |
-| POST | `/api/content/generate` | Generate content + SEO scores |
+| POST | `/api/content/generate` | Generate content + SEO scores (pass `projectId` to use its brand voice) |
 | POST | `/api/content/generate/stream` | Same, streamed as Server-Sent Events (see below) |
 | POST | `/api/content/variants?count=3` | Generate 2–4 alternative versions in parallel |
 | POST | `/api/content/transform` | Rewrite content: `Improve`, `Shorten`, `Expand`, `ChangeTone`, `Translate`, `Custom` |
@@ -99,6 +111,7 @@ Provider errors are returned as HTTP 502 `ProblemDetails` and shown in the UI.
 | POST | `/api/image/generate` | Generate an image (URL or `data:` URI) |
 | GET/POST | `/api/projects` | List / create projects |
 | GET/PUT/DELETE | `/api/projects/{id}` | Get / rename / delete a project |
+| PUT | `/api/projects/{id}/brand-voice` | Set the project's brand voice (all-empty fields remove it) |
 | GET/POST | `/api/projects/{id}/content` | List / add content items |
 | GET/PUT/DELETE | `/api/content-items/{id}` | Get / update / delete a content item |
 
@@ -155,7 +168,7 @@ SQLite database with the mock providers; the Anthropic client is tested against 
 
 - Authentication & authorization (ASP.NET Core Identity / JWT / OIDC); projects are currently
   owned by a seeded demo user.
-- EF Core migrations and PostgreSQL instead of `EnsureCreated` + SQLite.
+- PostgreSQL instead of SQLite (migrations are already in place).
 - Streaming generation, rate limiting, usage metering and billing.
 - Persist generated images to blob storage instead of returning `data:` URIs.
 - Docker images and deployment pipeline.

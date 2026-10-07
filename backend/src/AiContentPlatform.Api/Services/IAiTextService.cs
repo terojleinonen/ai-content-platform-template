@@ -19,7 +19,7 @@ public interface IAiTextService
     IAsyncEnumerable<string> StreamTransformAsync(TransformContentRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>Parses complete output into a title/body response with SEO metrics.</summary>
-    GenerateContentResponse BuildResponse(string output, string? fallbackTitle, IEnumerable<string>? keywords);
+    GenerateContentResponse BuildResponse(string output, string? fallbackTitle, IEnumerable<string>? keywords, BrandContext? brand = null);
 }
 
 /// <summary>

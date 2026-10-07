@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using AiContentPlatform.Api.Domain;
+using AiContentPlatform.Api.Services;
 
 namespace AiContentPlatform.Api.Dtos;
 
@@ -42,6 +44,13 @@ public class TransformContentRequest : IValidatableObject
     /// <summary>SEO keywords to preserve; also used to score the result.</summary>
     [MaxLength(10)]
     public string[]? Keywords { get; set; }
+
+    /// <summary>Project whose brand voice should guide the edit.</summary>
+    public Guid? ProjectId { get; set; }
+
+    /// <summary>Brand voice resolved from <see cref="ProjectId"/> by the server.</summary>
+    [JsonIgnore]
+    public BrandContext? Brand { get; set; }
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {

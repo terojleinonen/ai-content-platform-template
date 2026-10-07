@@ -2,7 +2,7 @@ using System.ComponentModel.DataAnnotations;
 
 namespace AiContentPlatform.Api.Dtos;
 
-public record ProjectDto(Guid Id, string Name, string? Description, DateTime CreatedAt, int ContentCount);
+public record ProjectDto(Guid Id, string Name, string? Description, DateTime CreatedAt, int ContentCount, BrandVoiceDto? BrandVoice);
 
 public class SaveProjectRequest
 {
