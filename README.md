@@ -67,17 +67,40 @@ npm install
 npm run dev
 ```
 
+**Option C – Docker with PostgreSQL** (production-like):
+
+```bash
+cp .env.example .env        # set POSTGRES_PASSWORD; optionally ANTHROPIC_API_KEY etc.
+docker compose up --build   # → http://localhost:8080
+scripts/smoke-test.sh       # optional end-to-end check (needs curl + jq)
+```
+
+The image builds the frontend and the API in separate stages and runs as a non-root user.
+PostgreSQL data and the sign-in cookie keys live in Docker volumes, so both survive restarts.
+Behind an HTTPS reverse proxy, set `BEHIND_PROXY=true` so the app sees the original scheme and host
+(needed for secure cookies and the Google/Microsoft redirect URIs).
+
 On first start the API creates `ai-content-platform.db` (SQLite), applies EF Core migrations and
 seeds a demo project with a brand voice. Delete the file to reset the demo data.
 
-Schema changes are EF Core migrations in `Data/Migrations`, applied automatically on startup:
+## Database
+
+| Setting | Values |
+|---|---|
+| `Database:Provider` | `Sqlite` (default) or `Postgres` |
+| `ConnectionStrings:Default` | `Data Source=ai-content-platform.db` / `Host=…;Database=…;Username=…;Password=…` |
+
+Migrations run automatically on startup (EF Core takes a lock, so several instances can start at
+once). Each database has its own migrations, so schema changes need one migration per database:
 
 ```bash
 cd backend && dotnet tool restore
-dotnet ef migrations add <Name> --project src/AiContentPlatform.Api --output-dir Data/Migrations
+dotnet ef migrations add <Name> --project src/AiContentPlatform.Api --context SqliteAppDbContext --output-dir Data/Migrations/Sqlite
+dotnet ef migrations add <Name> --project src/AiContentPlatform.Api --context PostgresAppDbContext --output-dir Data/Migrations/Postgres
 ```
 
-Databases created by earlier versions of this template (before migrations) are upgraded in place.
+CI fails if either set is out of date. SQLite databases created by early versions of this
+template (before migrations) are upgraded in place.
 
 ## Accounts and sign-in
 
@@ -187,11 +210,14 @@ Explore and try all endpoints with Swagger UI at http://localhost:5080/swagger (
 
 ```text
 .
+├── Dockerfile, docker-compose.yml, .env.example
+├── scripts/smoke-test.sh    # end-to-end check of a running instance
 ├── backend
 │   ├── AiContentPlatform.slnx
 │   ├── src/AiContentPlatform.Api
 │   │   ├── Controllers      # Content, Image, Projects, ContentItems, Health
-│   │   ├── Data             # EF Core DbContext + demo seed data
+│   │   ├── Auth             # Identity user manager, external sign-in, current user
+│   │   ├── Data             # DbContexts (SQLite/PostgreSQL), migrations per database, seed data
 │   │   ├── Domain           # User, Project, ContentItem
 │   │   ├── Dtos
 │   │   ├── Options          # AI provider configuration
@@ -201,7 +227,7 @@ Explore and try all endpoints with Swagger UI at http://localhost:5080/swagger (
 │   └── src
 │       ├── pages            # Write, Projects, Images
 │       └── components       # Markdown renderer, SEO panel
-└── .github/workflows/ci.yml # Build + test backend, build frontend
+└── .github/workflows/ci.yml # Tests on SQLite + PostgreSQL, migration check, frontend, Docker smoke test
 ```
 
 ### Adding another AI provider
@@ -215,18 +241,21 @@ it to `AiProviderSelector`.
 
 ```bash
 cd backend && dotnet test
+# against PostgreSQL instead (each test class gets a throwaway database):
+TEST_POSTGRES_CONNECTION="Host=localhost;Username=postgres;Password=postgres" dotnet test
 ```
 
-Integration tests run the real API in-memory (`WebApplicationFactory`) against a temporary
-SQLite database with the mock providers; the Anthropic client is tested against a stub HTTP handler.
+Integration tests run the real API in-memory (`WebApplicationFactory`) with the mock providers;
+the Anthropic and OpenAI clients are tested against stub HTTP handlers. CI runs the suite on both
+SQLite and PostgreSQL, checks that the migrations match the model, and builds the Docker image,
+starts the compose stack and runs `scripts/smoke-test.sh` against it.
 
 ## Next steps / TODO (for a production SaaS)
 
 - Email sending (confirmation, password reset), roles/teams and shared projects.
-- PostgreSQL instead of SQLite (migrations are already in place).
 - Rate limiting and billing on top of the usage records.
 - Persist generated images to blob storage instead of returning `data:` URIs.
-- Docker images and deployment pipeline.
+- A deployment pipeline (push the image to a registry, deploy behind HTTPS).
 
 ---
 

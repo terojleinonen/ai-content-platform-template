@@ -8,17 +8,83 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace AiContentPlatform.Api.Data.Migrations
+namespace AiContentPlatform.Api.Data.Migrations.Sqlite
 {
-    [DbContext(typeof(AppDbContext))]
-    [Migration("20261007182634_AddBrandVoice")]
-    partial class AddBrandVoice
+    [DbContext(typeof(SqliteAppDbContext))]
+    [Migration("20261007193840_AddAiUsage")]
+    partial class AddAiUsage
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
+
+            modelBuilder.Entity("AiContentPlatform.Api.Domain.AiUsageRecord", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("CacheReadTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("CacheWriteTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double?>("CostUsd")
+                        .HasColumnType("REAL");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Detail")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DurationMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Estimated")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("InputTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("OutputTokens")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<Guid?>("ProjectId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("ProjectId");
+
+                    b.ToTable("AiUsage", (string)null);
+                });
 
             modelBuilder.Entity("AiContentPlatform.Api.Domain.ContentItem", b =>
                 {

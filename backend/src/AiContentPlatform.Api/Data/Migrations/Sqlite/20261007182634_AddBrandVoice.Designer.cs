@@ -8,11 +8,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
 
-namespace AiContentPlatform.Api.Data.Migrations
+namespace AiContentPlatform.Api.Data.Migrations.Sqlite
 {
-    [DbContext(typeof(AppDbContext))]
-    [Migration("20261007182527_InitialCreate")]
-    partial class InitialCreate
+    [DbContext(typeof(SqliteAppDbContext))]
+    [Migration("20261007182634_AddBrandVoice")]
+    partial class AddBrandVoice
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -139,6 +139,36 @@ namespace AiContentPlatform.Api.Data.Migrations
                         .HasForeignKey("OwnerId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.OwnsOne("AiContentPlatform.Api.Domain.BrandVoice", "BrandVoice", b1 =>
+                        {
+                            b1.Property<Guid>("ProjectId");
+
+                            b1.PrimitiveCollection<string>("AvoidTerms")
+                                .IsRequired();
+
+                            b1.Property<string>("KeyFacts");
+
+                            b1.PrimitiveCollection<string>("PreferredTerms")
+                                .IsRequired();
+
+                            b1.Property<string>("TargetAudience");
+
+                            b1.Property<string>("Voice");
+
+                            b1.HasKey("ProjectId");
+
+                            b1.ToTable("Projects");
+
+                            b1
+                                .ToJson("BrandVoice")
+                                .HasColumnType("TEXT");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ProjectId");
+                        });
+
+                    b.Navigation("BrandVoice");
 
                     b.Navigation("Owner");
                 });

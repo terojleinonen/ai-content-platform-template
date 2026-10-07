@@ -4,6 +4,7 @@ using AiContentPlatform.Api.Data;
 using AiContentPlatform.Api.Domain;
 using AiContentPlatform.Api.Options;
 using AiContentPlatform.Api.Services;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -26,10 +27,9 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p => p
     .AllowAnyHeader()
     .AllowAnyMethod()));
 
-// Persistence (SQLite file, migrated and seeded on startup). The factory also registers a scoped
-// AppDbContext; background-safe code (usage recording, parallel variants) creates its own contexts.
-builder.Services.AddDbContextFactory<AppDbContext>(o =>
-    o.UseSqlite(builder.Configuration.GetConnectionString("Default")));
+// Persistence: SQLite (default) or PostgreSQL, migrated and seeded on startup. Request code uses the
+// scoped AppDbContext; background-safe code (usage recording) creates contexts from the factory.
+builder.Services.AddAppDatabase(builder.Configuration);
 
 // Accounts: ASP.NET Core Identity with cookie sign-in (also bearer tokens for API clients).
 builder.Services.AddIdentityApiEndpoints<User>(o =>
@@ -71,6 +71,15 @@ if (builder.Configuration["Authentication:Microsoft:ClientId"] is { Length: > 0 
         o.ClientSecret = builder.Configuration["Authentication:Microsoft:ClientSecret"]!;
         o.SignInScheme = IdentityConstants.ExternalScheme;
     });
+}
+
+// Keys that protect the sign-in cookie. By default they live in memory or the user profile; in a
+// container, persist them to a volume so users stay signed in across restarts and deploys.
+if (builder.Configuration["DataProtection:KeysPath"] is { Length: > 0 } keysPath)
+{
+    builder.Services.AddDataProtection()
+        .PersistKeysToFileSystem(new DirectoryInfo(keysPath))
+        .SetApplicationName("ai-content-platform");
 }
 
 builder.Services.AddHttpContextAccessor();

@@ -7,6 +7,7 @@ on:
 
 jobs:
   backend:
+    name: backend (SQLite)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -19,6 +20,39 @@ jobs:
       - run: dotnet restore
       - run: dotnet build --no-restore --configuration Release
       - run: dotnet test --no-build --configuration Release
+      - name: Migrations match the model (both databases)
+        run: |
+          dotnet tool restore
+          for context in SqliteAppDbContext PostgresAppDbContext; do
+            dotnet ef migrations has-pending-model-changes --project src/AiContentPlatform.Api --context "$context"
+          done
+
+  backend-postgres:
+    name: backend (PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      TEST_POSTGRES_CONNECTION: Host=localhost;Username=postgres;Password=postgres
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+      - run: dotnet test --configuration Release
 
   frontend:
     runs-on: ubuntu-latest
@@ -34,3 +68,26 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       - run: npm ci
       - run: npm run build
+
+  docker:
+    name: docker compose (image + PostgreSQL + smoke test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and start
+        run: docker compose up -d --build
+      - name: Smoke test
+        run: scripts/smoke-test.sh http://localhost:8080
+      - name: Data survives a restart
+        run: |
+          docker compose restart app
+          scripts/smoke-test.sh http://localhost:8080
+          projects=$(docker compose exec -T db psql -U aicp -d aicp -tAc 'SELECT count(*) FROM "Projects"')
+          echo "Projects in PostgreSQL after restart: $projects"
+          [ "$projects" -ge 2 ]
+      - name: Logs
+        if: always()
+        run: docker compose logs --no-color
+      - name: Stop
+        if: always()
+        run: docker compose down -v

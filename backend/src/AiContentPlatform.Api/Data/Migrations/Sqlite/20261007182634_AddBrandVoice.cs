@@ -2,7 +2,7 @@
 
 #nullable disable
 
-namespace AiContentPlatform.Api.Data.Migrations
+namespace AiContentPlatform.Api.Data.Migrations.Sqlite
 {
     /// <inheritdoc />
     public partial class AddBrandVoice : Migration

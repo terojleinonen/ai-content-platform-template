@@ -169,6 +169,7 @@ public class LegacyDatabaseUpgradeTests
     public async Task Startup_UpgradesLegacyDatabaseAndKeepsData()
     {
         var factory = new ApiFactory();
+        Assert.SkipWhen(factory.UsesPostgres, "Databases from before migrations only exist as SQLite files.");
         await using (var connection = new SqliteConnection($"Data Source={factory.DbPath};Pooling=False"))
         {
             await connection.OpenAsync(TestContext.Current.CancellationToken);
