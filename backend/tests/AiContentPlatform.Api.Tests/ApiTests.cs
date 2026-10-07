@@ -11,6 +11,16 @@ namespace AiContentPlatform.Api.Tests;
 
 public sealed class ApiFactory : WebApplicationFactory<Program>
 {
+    private readonly Lazy<HttpClient> _owner;
+
+    public ApiFactory()
+    {
+        _owner = new(() => this.CreateUserClientAsync("owner@test.local").GetAwaiter().GetResult());
+    }
+
+    /// <summary>The first account registered in this database, so it owns the seeded demo project.</summary>
+    public HttpClient Owner => _owner.Value;
+
     public string DbPath { get; } = Path.Combine(Path.GetTempPath(), $"ai-content-tests-{Guid.NewGuid():N}.db");
 
     protected override void ConfigureWebHost(IWebHostBuilder builder)
@@ -28,6 +38,24 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
     }
 }
 
+public static class TestClients
+{
+    public const string Password = "Test-password-1";
+
+    /// <summary>Registers an account and returns a client signed in with its auth cookie.</summary>
+    public static async Task<HttpClient> CreateUserClientAsync(this WebApplicationFactory<Program> factory, string? email = null)
+    {
+        var client = factory.CreateClient(new WebApplicationFactoryClientOptions { HandleCookies = true, AllowAutoRedirect = false });
+        email ??= $"user-{Guid.NewGuid():N}@test.local";
+
+        var register = await client.PostAsJsonAsync("/api/auth/register", new { email, password = Password });
+        register.EnsureSuccessStatusCode();
+        var login = await client.PostAsJsonAsync("/api/auth/login?useCookies=true", new { email, password = Password });
+        login.EnsureSuccessStatusCode();
+        return client;
+    }
+}
+
 public class ApiTests : IClassFixture<ApiFactory>
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
@@ -40,7 +68,7 @@ public class ApiTests : IClassFixture<ApiFactory>
 
     public ApiTests(ApiFactory factory)
     {
-        _client = factory.CreateClient();
+        _client = factory.Owner;
     }
 
     [Fact]

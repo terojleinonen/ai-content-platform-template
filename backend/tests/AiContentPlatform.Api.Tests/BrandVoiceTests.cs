@@ -21,7 +21,7 @@ public class BrandVoiceTests : IClassFixture<ApiFactory>
 
     public BrandVoiceTests(ApiFactory factory)
     {
-        _client = factory.CreateClient();
+        _client = factory.CreateUserClientAsync().GetAwaiter().GetResult();
     }
 
     private async Task<ProjectDto> CreateProjectWithBrandAsync()
@@ -179,7 +179,8 @@ public class LegacyDatabaseUpgradeTests
 
         await using (factory)
         {
-            var client = factory.CreateClient();
+            // The first account created takes over the data that existed before accounts.
+            var client = await factory.CreateUserClientAsync();
             var projects = await client.GetFromJsonAsync<List<ProjectDto>>("/api/projects", TestContext.Current.CancellationToken);
 
             var legacy = Assert.Single(projects!);

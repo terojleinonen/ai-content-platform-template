@@ -24,10 +24,13 @@ public static class SeedData
             return;
         }
 
+        // Owns the demo data until the first account is created, which then takes it over
+        // (see AppUserManager). It has no password and can't sign in.
         var user = new User
         {
             Id = DemoUserId,
-            Email = "demo@example.com",
+            Email = "demo@example.invalid",
+            NormalizedEmail = "DEMO@EXAMPLE.INVALID",
             DisplayName = "Demo User"
         };
 

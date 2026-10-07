@@ -1,25 +1,29 @@
 using AiContentPlatform.Api.Domain;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore;
 
 namespace AiContentPlatform.Api.Data;
 
-public class AppDbContext : DbContext
+public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
 {
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
     {
     }
 
-    public DbSet<User> Users => Set<User>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ContentItem> ContentItems => Set<ContentItem>();
     public DbSet<AiUsageRecord> AiUsage => Set<AiUsageRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        base.OnModelCreating(modelBuilder);
+
         modelBuilder.Entity<User>(e =>
         {
+            // Identity's user table, kept under the name used before accounts existed.
+            e.ToTable("Users");
             e.HasIndex(u => u.Email).IsUnique();
-            e.Property(u => u.Email).HasMaxLength(256);
             e.Property(u => u.DisplayName).HasMaxLength(128);
         });
 
@@ -38,6 +42,7 @@ public class AppDbContext : DbContext
             e.ToTable("AiUsage");
             e.HasIndex(u => u.CreatedAt);
             e.HasIndex(u => u.ProjectId);
+            e.HasIndex(u => u.UserId);
             e.Property(u => u.Operation).HasConversion<string>().HasMaxLength(32);
             e.Property(u => u.Status).HasConversion<string>().HasMaxLength(16);
             e.Property(u => u.Detail).HasMaxLength(64);

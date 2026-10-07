@@ -12,6 +12,14 @@ export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
 export const TONES = ['Friendly', 'Professional', 'Playful', 'Persuasive'] as const
 export const LANGUAGES = ['English', 'Finnish', 'Swedish', 'German', 'French', 'Spanish'] as const
 
+export interface CurrentUser {
+  id: string
+  email: string
+  displayName: string
+  hasPassword: boolean
+  externalLogins: string[]
+}
+
 export interface Health {
   status: string
   textProvider: string

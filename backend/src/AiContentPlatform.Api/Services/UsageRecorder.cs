@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using AiContentPlatform.Api.Auth;
 using AiContentPlatform.Api.Data;
 using AiContentPlatform.Api.Domain;
 using AiContentPlatform.Api.Options;
@@ -26,12 +27,14 @@ public class UsageRecorder : IUsageRecorder
 
     private readonly IDbContextFactory<AppDbContext> _dbFactory;
     private readonly IOptionsMonitor<AiOptions> _options;
+    private readonly ICurrentUser _user;
     private readonly ILogger<UsageRecorder> _logger;
 
-    public UsageRecorder(IDbContextFactory<AppDbContext> dbFactory, IOptionsMonitor<AiOptions> options, ILogger<UsageRecorder> logger)
+    public UsageRecorder(IDbContextFactory<AppDbContext> dbFactory, IOptionsMonitor<AiOptions> options, ICurrentUser user, ILogger<UsageRecorder> logger)
     {
         _dbFactory = dbFactory;
         _options = options;
+        _user = user;
         _logger = logger;
     }
 
@@ -61,6 +64,7 @@ public class UsageRecorder : IUsageRecorder
                 Operation = context.Operation,
                 Detail = context.Detail,
                 ProjectId = context.ProjectId,
+                UserId = _user.Id,
                 Provider = provider,
                 Model = meter.Model ?? "unknown",
                 InputTokens = meter.InputTokens,

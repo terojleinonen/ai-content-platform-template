@@ -1,6 +1,7 @@
 import type {
   BrandVoice,
   ContentItem,
+  CurrentUser,
   GenerateContentRequest,
   GenerateContentResponse,
   GenerateImageRequest,
@@ -13,6 +14,9 @@ import type {
 } from './types'
 
 const BASE = import.meta.env.VITE_API_BASE ?? ''
+
+/** Fired when the API answers 401: the session ended or the user isn't signed in. */
+export const AUTH_REQUIRED_EVENT = 'auth:required'
 
 interface ProblemDetails {
   title?: string
@@ -46,9 +50,19 @@ async function request<T>(method: string, path: string, body?: unknown, signal?:
     throw new Error('Cannot reach the API. Is the backend running on http://localhost:5080?')
   }
 
+  if (res.status === 401 && !path.startsWith('/api/auth/')) window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT))
   if (!res.ok) throw new Error(await errorMessage(res))
 
-  return res.status === 204 ? (undefined as T) : ((await res.json()) as T)
+  // Some endpoints (204s, Identity's login/register) answer with an empty body.
+  const text = await res.text()
+  return (text ? JSON.parse(text) : undefined) as T
+}
+
+/** Identity's login failures carry a code ("Failed", "LockedOut", ...) rather than a message. */
+const LOGIN_ERRORS: Record<string, string> = {
+  Failed: 'Incorrect email or password.',
+  LockedOut: 'Too many failed attempts. Try again in a few minutes.',
+  NotAllowed: 'This account isn’t allowed to sign in yet.',
 }
 
 export type OnDelta = (text: string) => void
@@ -75,6 +89,7 @@ async function streamContent(
     if (signal?.aborted) throw err
     throw new Error('Cannot reach the API. Is the backend running on http://localhost:5080?')
   }
+  if (res.status === 401) window.dispatchEvent(new Event(AUTH_REQUIRED_EVENT))
   if (!res.ok || !res.body) throw new Error(await errorMessage(res))
 
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
@@ -108,6 +123,18 @@ async function streamContent(
 
 export const api = {
   health: () => request<Health>('GET', '/api/health'),
+
+  me: () => request<CurrentUser>('GET', '/api/auth/me'),
+  providers: () => request<string[]>('GET', '/api/auth/providers'),
+  register: (email: string, password: string) => request<void>('POST', '/api/auth/register', { email, password }),
+  login: async (email: string, password: string) => {
+    try {
+      await request<void>('POST', '/api/auth/login?useCookies=true', { email, password })
+    } catch (err) {
+      throw new Error(LOGIN_ERRORS[(err as Error).message] ?? (err as Error).message)
+    }
+  },
+  logout: () => request<void>('POST', '/api/auth/logout'),
 
   generateContent: (req: GenerateContentRequest) =>
     request<GenerateContentResponse>('POST', '/api/content/generate', req),

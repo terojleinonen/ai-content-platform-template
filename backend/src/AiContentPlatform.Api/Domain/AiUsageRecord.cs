@@ -27,6 +27,10 @@ public class AiUsageRecord
     public string? Detail { get; set; }
 
     public Guid? ProjectId { get; set; }
+
+    /// <summary>The signed-in user who made the call; null for records from before accounts existed.</summary>
+    public Guid? UserId { get; set; }
+
     public string Provider { get; set; } = string.Empty;
     public string Model { get; set; } = string.Empty;
     public int InputTokens { get; set; }

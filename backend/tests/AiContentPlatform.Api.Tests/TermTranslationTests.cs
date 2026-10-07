@@ -71,7 +71,7 @@ public class TermTranslationTests : IClassFixture<ApiFactory>
     {
         _client = factory
             .WithWebHostBuilder(b => b.ConfigureTestServices(s => s.AddTransient<ITextGenerationProvider, FakeFinnishProvider>()))
-            .CreateClient();
+            .CreateUserClientAsync().GetAwaiter().GetResult();
         FakeFinnishProvider.FailTranslation = false;
     }
 
