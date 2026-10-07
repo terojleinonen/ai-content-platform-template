@@ -3,9 +3,11 @@ using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using AiContentPlatform.Api.Data;
 using AiContentPlatform.Api.Dtos;
 using AiContentPlatform.Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace AiContentPlatform.Api.Controllers;
 
@@ -16,11 +18,13 @@ public class ContentController : ControllerBase
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
     private readonly IAiTextService _aiTextService;
+    private readonly AppDbContext _db;
     private readonly ILogger<ContentController> _logger;
 
-    public ContentController(IAiTextService aiTextService, ILogger<ContentController> logger)
+    public ContentController(IAiTextService aiTextService, AppDbContext db, ILogger<ContentController> logger)
     {
         _aiTextService = aiTextService;
+        _db = db;
         _logger = logger;
     }
 
@@ -29,8 +33,11 @@ public class ContentController : ControllerBase
     [ProducesResponseType<GenerateContentResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<GenerateContentResponse>> Generate([FromBody] GenerateContentRequest request, CancellationToken cancellationToken)
     {
+        if (!await TryLoadBrandAsync(request.ProjectId, b => request.Brand = b, cancellationToken)) return ProjectNotFound();
+
         var result = await _aiTextService.GenerateContentAsync(request, cancellationToken);
         return Ok(result);
     }
@@ -45,11 +52,16 @@ public class ContentController : ControllerBase
     [Produces("text/event-stream")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public IResult GenerateStream([FromBody] GenerateContentRequest request, CancellationToken cancellationToken) =>
-        TypedResults.ServerSentEvents(StreamEvents(
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IResult> GenerateStream([FromBody] GenerateContentRequest request, CancellationToken cancellationToken)
+    {
+        if (!await TryLoadBrandAsync(request.ProjectId, b => request.Brand = b, cancellationToken)) return ProjectNotFoundResult();
+
+        return TypedResults.ServerSentEvents(StreamEvents(
             _aiTextService.StreamContentAsync(request, cancellationToken),
-            output => _aiTextService.BuildResponse(output, request.Title, request.Keywords),
+            output => _aiTextService.BuildResponse(output, request.Title, request.Keywords, request.Brand),
             cancellationToken));
+    }
 
     /// <summary>Generates several alternative versions of the same brief (2–4) in parallel, each from a different angle.</summary>
     [HttpPost("variants")]
@@ -61,6 +73,8 @@ public class ContentController : ControllerBase
         CancellationToken cancellationToken,
         [FromQuery, Range(2, 4)] int count = 3)
     {
+        if (!await TryLoadBrandAsync(request.ProjectId, b => request.Brand = b, cancellationToken)) return ProjectNotFound();
+
         var results = await _aiTextService.GenerateVariantsAsync(request, count, cancellationToken);
         return Ok(results);
     }
@@ -70,8 +84,11 @@ public class ContentController : ControllerBase
     [ProducesResponseType<GenerateContentResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
     public async Task<ActionResult<GenerateContentResponse>> Transform([FromBody] TransformContentRequest request, CancellationToken cancellationToken)
     {
+        if (!await TryLoadBrandAsync(request.ProjectId, b => request.Brand = b, cancellationToken)) return ProjectNotFound();
+
         var result = await _aiTextService.TransformContentAsync(request, cancellationToken);
         return Ok(result);
     }
@@ -81,11 +98,41 @@ public class ContentController : ControllerBase
     [Produces("text/event-stream")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
-    public IResult TransformStream([FromBody] TransformContentRequest request, CancellationToken cancellationToken) =>
-        TypedResults.ServerSentEvents(StreamEvents(
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IResult> TransformStream([FromBody] TransformContentRequest request, CancellationToken cancellationToken)
+    {
+        if (!await TryLoadBrandAsync(request.ProjectId, b => request.Brand = b, cancellationToken)) return ProjectNotFoundResult();
+
+        return TypedResults.ServerSentEvents(StreamEvents(
             _aiTextService.StreamTransformAsync(request, cancellationToken),
-            output => _aiTextService.BuildResponse(output, request.Title, request.Keywords),
+            output => _aiTextService.BuildResponse(output, request.Title, request.Keywords, request.Brand),
             cancellationToken));
+    }
+
+    /// <summary>
+    /// Loads the brand voice of <paramref name="projectId"/> (if any) into the request.
+    /// Returns false when a project id was given but doesn't exist.
+    /// </summary>
+    private async Task<bool> TryLoadBrandAsync(Guid? projectId, Action<BrandContext?> setBrand, CancellationToken cancellationToken)
+    {
+        if (projectId is null) return true;
+
+        var project = await _db.Projects
+            .AsNoTracking()
+            .Where(p => p.Id == projectId)
+            .Select(p => new { p.Name, p.BrandVoice })
+            .FirstOrDefaultAsync(cancellationToken);
+        if (project is null) return false;
+
+        setBrand(project.BrandVoice is { IsEmpty: false } voice ? new BrandContext(project.Name, voice) : null);
+        return true;
+    }
+
+    private ObjectResult ProjectNotFound() =>
+        Problem(statusCode: StatusCodes.Status404NotFound, title: "Project not found.");
+
+    private static IResult ProjectNotFoundResult() =>
+        TypedResults.Problem(statusCode: StatusCodes.Status404NotFound, title: "Project not found.");
 
     private async IAsyncEnumerable<SseItem<string>> StreamEvents(
         IAsyncEnumerable<string> source,

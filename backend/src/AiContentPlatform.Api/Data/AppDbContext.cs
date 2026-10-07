@@ -25,6 +25,7 @@ public class AppDbContext : DbContext
         modelBuilder.Entity<Project>(e =>
         {
             e.Property(p => p.Name).HasMaxLength(200);
+            e.OwnsOne(p => p.BrandVoice, b => b.ToJson());
             e.HasOne(p => p.Owner)
                 .WithMany(u => u.Projects)
                 .HasForeignKey(p => p.OwnerId)

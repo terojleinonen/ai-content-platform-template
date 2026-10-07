@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, parseKeywords } from '../api'
 import { AiTools, TRANSFORM_LABELS, type TransformOptions } from '../components/AiTools'
+import { BrandCheckPanel } from '../components/BrandCheckPanel'
+import { BrandVoiceEditor } from '../components/BrandVoiceEditor'
 import { Markdown } from '../components/Markdown'
 import { useContentStream } from '../hooks/useContentStream'
-import { CONTENT_TYPES, CONTENT_TYPE_LABELS, type ContentItem, type ContentType, type Project, type TransformAction } from '../types'
+import { CONTENT_TYPES, CONTENT_TYPE_LABELS, type BrandCheck, type ContentItem, type ContentType, type Project, type TransformAction } from '../types'
 
 export function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
@@ -11,6 +13,7 @@ export function ProjectsPage() {
   const [items, setItems] = useState<ContentItem[]>([])
   const [openItem, setOpenItem] = useState<ContentItem>()
   const [newName, setNewName] = useState('')
+  const [editingBrand, setEditingBrand] = useState(false)
   const [error, setError] = useState<string>()
 
   const loadProjects = useCallback(async () => {
@@ -37,6 +40,7 @@ export function ProjectsPage() {
 
   useEffect(() => {
     setOpenItem(undefined)
+    setEditingBrand(false)
     if (selectedId) loadItems(selectedId)
     else setItems([])
   }, [selectedId, loadItems])
@@ -109,13 +113,36 @@ export function ProjectsPage() {
           <>
             <div className="section-header">
               <div>
-                <h2>{selected.name}</h2>
+                <h2>
+                  {selected.name}{' '}
+                  {selected.brandVoice && (
+                    <span className="pill good" title={selected.brandVoice.voice ?? undefined}>
+                      Brand voice ✓
+                    </span>
+                  )}
+                </h2>
                 {selected.description && <p className="muted">{selected.description}</p>}
               </div>
-              <button className="ghost danger" onClick={() => deleteProject(selected)}>
-                Delete project
-              </button>
+              <div className="header-actions">
+                <button className="ghost" onClick={() => setEditingBrand(!editingBrand)}>
+                  {selected.brandVoice ? 'Edit brand voice' : 'Add brand voice'}
+                </button>
+                <button className="ghost danger" onClick={() => deleteProject(selected)}>
+                  Delete project
+                </button>
+              </div>
             </div>
+            {editingBrand && (
+              <BrandVoiceEditor
+                key={selected.id}
+                project={selected}
+                onClose={() => setEditingBrand(false)}
+                onSaved={async () => {
+                  setEditingBrand(false)
+                  await loadProjects()
+                }}
+              />
+            )}
             {items.length === 0 ? (
               <div className="empty">
                 <p>No content yet.</p>
@@ -160,6 +187,7 @@ function ContentEditor({
   const [keywords, setKeywords] = useState(item.keywords.join(', '))
   const [error, setError] = useState<string>()
   const [notice, setNotice] = useState<string>()
+  const [brandCheck, setBrandCheck] = useState<BrandCheck | null>()
   const [streamLabel, setStreamLabel] = useState('')
   const stream = useContentStream()
 
@@ -174,6 +202,7 @@ function ContentEditor({
     resetFields()
     setEditing(false)
     setNotice(undefined)
+    setBrandCheck(undefined)
     setError(undefined)
   }
 
@@ -184,11 +213,16 @@ function ContentEditor({
     setEditing(true)
 
     const outcome = await stream.run((onDelta, signal) =>
-      api.transformContentStream({ action, title, body, type, keywords: parseKeywords(keywords), ...options }, onDelta, signal),
+      api.transformContentStream(
+        { action, title, body, type, keywords: parseKeywords(keywords), projectId: item.projectId, ...options },
+        onDelta,
+        signal,
+      ),
     )
     if (outcome?.kind === 'done') {
       setTitle(outcome.result.title)
       setBody(outcome.result.body)
+      setBrandCheck(outcome.result.brandCheck)
       setNotice('AI edit applied. Review it, then Save, or Cancel to discard.')
     } else if (outcome?.kind === 'stopped') {
       setNotice('Edit stopped. The text is unchanged.')
@@ -283,6 +317,7 @@ function ContentEditor({
           <textarea rows={18} value={stream.live ? stream.live.body : body} onChange={(e) => setBody(e.target.value)} readOnly={stream.running} />
           <AiTools disabled={stream.running} onRun={runTool} />
           {notice && <p className="notice">{notice}</p>}
+          {brandCheck && <BrandCheckPanel check={brandCheck} />}
           {error && <p className="error">{error}</p>}
         </div>
       ) : (

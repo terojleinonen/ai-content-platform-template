@@ -22,20 +22,13 @@ public class ProjectsController : ControllerBase
     [HttpGet]
     public async Task<IReadOnlyList<ProjectDto>> List(CancellationToken cancellationToken)
     {
-        return await _db.Projects
-            .OrderByDescending(p => p.CreatedAt)
-            .Select(p => new ProjectDto(p.Id, p.Name, p.Description, p.CreatedAt, p.ContentItems.Count))
-            .ToListAsync(cancellationToken);
+        return await QueryProjects(_db.Projects.OrderByDescending(p => p.CreatedAt), cancellationToken);
     }
 
     [HttpGet("{id:guid}")]
     public async Task<ActionResult<ProjectDto>> Get(Guid id, CancellationToken cancellationToken)
     {
-        var project = await _db.Projects
-            .Where(p => p.Id == id)
-            .Select(p => new ProjectDto(p.Id, p.Name, p.Description, p.CreatedAt, p.ContentItems.Count))
-            .FirstOrDefaultAsync(cancellationToken);
-
+        var project = (await QueryProjects(_db.Projects.Where(p => p.Id == id), cancellationToken)).FirstOrDefault();
         return project is null ? NotFound() : project;
     }
 
@@ -53,7 +46,7 @@ public class ProjectsController : ControllerBase
         _db.Projects.Add(project);
         await _db.SaveChangesAsync(cancellationToken);
 
-        var dto = new ProjectDto(project.Id, project.Name, project.Description, project.CreatedAt, 0);
+        var dto = new ProjectDto(project.Id, project.Name, project.Description, project.CreatedAt, 0, null);
         return CreatedAtAction(nameof(Get), new { id = project.Id }, dto);
     }
 
@@ -67,7 +60,28 @@ public class ProjectsController : ControllerBase
         project.Description = request.Description?.Trim();
         await _db.SaveChangesAsync(cancellationToken);
 
-        return new ProjectDto(project.Id, project.Name, project.Description, project.CreatedAt, project.ContentItems.Count);
+        return ToDto(project);
+    }
+
+    /// <summary>Sets the project's brand voice. Sending only empty fields removes it.</summary>
+    [HttpPut("{id:guid}/brand-voice")]
+    public async Task<ActionResult<ProjectDto>> SaveBrandVoice(Guid id, [FromBody] SaveBrandVoiceRequest request, CancellationToken cancellationToken)
+    {
+        var project = await _db.Projects.Include(p => p.ContentItems).FirstOrDefaultAsync(p => p.Id == id, cancellationToken);
+        if (project is null) return NotFound();
+
+        var brand = new BrandVoice
+        {
+            Voice = Clean(request.Voice),
+            TargetAudience = Clean(request.TargetAudience),
+            KeyFacts = Clean(request.KeyFacts),
+            PreferredTerms = CleanTerms(request.PreferredTerms),
+            AvoidTerms = CleanTerms(request.AvoidTerms)
+        };
+        project.BrandVoice = brand.IsEmpty ? null : brand;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return ToDto(project);
     }
 
     [HttpDelete("{id:guid}")]
@@ -76,6 +90,28 @@ public class ProjectsController : ControllerBase
         var deleted = await _db.Projects.Where(p => p.Id == id).ExecuteDeleteAsync(cancellationToken);
         return deleted == 0 ? NotFound() : NoContent();
     }
+
+    private static ProjectDto ToDto(Project p) =>
+        new(p.Id, p.Name, p.Description, p.CreatedAt, p.ContentItems.Count, BrandVoiceDto.From(p.BrandVoice));
+
+    // Owned JSON entities can only be projected from no-tracking queries.
+    private static async Task<List<ProjectDto>> QueryProjects(IQueryable<Project> query, CancellationToken cancellationToken)
+    {
+        var rows = await query
+            .AsNoTracking()
+            .Select(p => new { p.Id, p.Name, p.Description, p.CreatedAt, Count = p.ContentItems.Count, p.BrandVoice })
+            .ToListAsync(cancellationToken);
+
+        return rows.Select(r => new ProjectDto(r.Id, r.Name, r.Description, r.CreatedAt, r.Count, BrandVoiceDto.From(r.BrandVoice))).ToList();
+    }
+
+    private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static List<string> CleanTerms(IEnumerable<string>? terms) =>
+        terms?.Where(t => !string.IsNullOrWhiteSpace(t))
+            .Select(t => t.Trim())
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList() ?? new();
 
     [HttpGet("{id:guid}/content")]
     public async Task<ActionResult<IReadOnlyList<ContentItemDto>>> ListContent(Guid id, CancellationToken cancellationToken)

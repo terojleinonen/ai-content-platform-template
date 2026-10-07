@@ -23,7 +23,7 @@ public class AiTextService : IAiTextService
     public async Task<GenerateContentResponse> GenerateContentAsync(GenerateContentRequest request, CancellationToken cancellationToken = default)
     {
         var output = await CollectAsync(_provider.StreamContentAsync(request, cancellationToken));
-        return BuildResponse(output, request.Title, request.Keywords);
+        return BuildResponse(output, request.Title, request.Keywords, request.Brand);
     }
 
     public IAsyncEnumerable<string> StreamContentAsync(GenerateContentRequest request, CancellationToken cancellationToken = default) =>
@@ -39,13 +39,13 @@ public class AiTextService : IAiTextService
     public async Task<GenerateContentResponse> TransformContentAsync(TransformContentRequest request, CancellationToken cancellationToken = default)
     {
         var output = await CollectAsync(_provider.StreamTransformAsync(request, cancellationToken));
-        return BuildResponse(output, request.Title, request.Keywords);
+        return BuildResponse(output, request.Title, request.Keywords, request.Brand);
     }
 
     public IAsyncEnumerable<string> StreamTransformAsync(TransformContentRequest request, CancellationToken cancellationToken = default) =>
         _provider.StreamTransformAsync(request, cancellationToken);
 
-    public GenerateContentResponse BuildResponse(string output, string? fallbackTitle, IEnumerable<string>? keywords)
+    public GenerateContentResponse BuildResponse(string output, string? fallbackTitle, IEnumerable<string>? keywords, BrandContext? brand = null)
     {
         var generated = ContentPrompt.Parse(output, fallbackTitle);
         var cleanKeywords = (keywords ?? [])
@@ -60,8 +60,28 @@ public class AiTextService : IAiTextService
             SeoSummary = _seo.BuildSeoSummary(generated.Body, cleanKeywords),
             KeywordScores = _seo.ScoreKeywords(generated.Body, cleanKeywords),
             WordCount = _seo.CountWords(generated.Body),
-            Provider = _provider.Name
+            Provider = _provider.Name,
+            BrandCheck = CheckBrand(generated, brand)
         };
+    }
+
+    /// <summary>Deterministic check of avoided and preferred terms (phrase-aware, case-insensitive).</summary>
+    private BrandCheckResult? CheckBrand(GeneratedText generated, BrandContext? brand)
+    {
+        if (brand is null || (brand.Voice.AvoidTerms.Count == 0 && brand.Voice.PreferredTerms.Count == 0))
+        {
+            return null;
+        }
+
+        var text = generated.Title + "\n" + generated.Body;
+        var avoid = _seo.ScoreKeywords(text, brand.Voice.AvoidTerms);
+        var preferred = _seo.ScoreKeywords(text, brand.Voice.PreferredTerms);
+
+        return new BrandCheckResult(
+            brand.ProjectName,
+            avoid.Where(kv => kv.Value > 0).Select(kv => kv.Key).ToList(),
+            preferred.Where(kv => kv.Value > 0).Select(kv => kv.Key).ToList(),
+            preferred.Where(kv => kv.Value == 0).Select(kv => kv.Key).ToList());
     }
 
     private async Task<string> CollectAsync(IAsyncEnumerable<string> chunks)

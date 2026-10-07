@@ -181,7 +181,7 @@ button.primary.stop .spinner { border-color: rgb(127 127 127 / 0.4); border-top-
 .bar-fill.warn { background: var(--warn); }
 .bar-fill.bad { background: var(--bad); }
 
-.save-bar { display: flex; gap: 8px; }
+.save-bar { display: flex; gap: 8px; align-items: center; }
 .save-bar select { flex: 1; }
 
 /* Projects */
@@ -241,3 +241,12 @@ button.primary.stop .spinner { border-color: rgb(127 127 127 / 0.4); border-top-
 .spinner.large { width: 32px; height: 32px; border-width: 3px; border-color: var(--border); border-top-color: var(--accent); display: inline-block; }
 .no-margin { margin: 0; }
 article .ai-tools { margin-top: 16px; }
+
+/* Brand voice */
+.brand-editor { background: var(--surface-2); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+.brand-editor h3 { margin: 0 0 4px; }
+.brand-editor p { margin: 0; }
+.brand-terms { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.brand-hint { font-size: 0.8rem; color: var(--muted); font-weight: normal; }
+.brand-hint.on { color: var(--good); }
+.header-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }

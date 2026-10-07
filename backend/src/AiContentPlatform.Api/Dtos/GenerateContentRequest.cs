@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.Json.Serialization;
 using AiContentPlatform.Api.Domain;
+using AiContentPlatform.Api.Services;
 
 namespace AiContentPlatform.Api.Dtos;
 
@@ -27,6 +28,13 @@ public class GenerateContentRequest
     [MaxLength(10)]
     public string[]? Keywords { get; set; }
 
+    /// <summary>Project whose brand voice should guide the writing.</summary>
+    public Guid? ProjectId { get; set; }
+
+    /// <summary>Brand voice resolved from <see cref="ProjectId"/> by the server.</summary>
+    [JsonIgnore]
+    public BrandContext? Brand { get; set; }
+
     /// <summary>
     /// 1-based variant number when generating several alternatives; 0 for a single generation.
     /// Set by the server, not by clients.
@@ -43,6 +51,8 @@ public class GenerateContentRequest
         ToneOfVoice = ToneOfVoice,
         Language = Language,
         Keywords = Keywords,
+        ProjectId = ProjectId,
+        Brand = Brand,
         Variant = variant
     };
 }
