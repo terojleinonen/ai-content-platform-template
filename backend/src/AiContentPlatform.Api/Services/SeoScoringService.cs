@@ -1,63 +1,43 @@
-using System.Globalization;
 using System.Text.RegularExpressions;
+using AiContentPlatform.Api.Domain;
+using AiContentPlatform.Api.Dtos;
 
 namespace AiContentPlatform.Api.Services;
 
 /// <summary>
-/// Simple keyword-density based SEO scoring. Replace with ML.NET or a dedicated SEO API
-/// if you need readability, semantic coverage, SERP analysis, etc.
+/// Keyword-usage SEO scoring, judged by content type and length (see <see cref="SeoRules"/>).
+/// Replace with ML.NET or a dedicated SEO API if you need readability, semantic coverage, SERP analysis, etc.
 /// </summary>
 public partial class SeoScoringService : ISeoScoringService
 {
-    // Healthy keyword density range; above the upper bound reads as keyword stuffing.
-    public const double LowDensity = 0.005;
-    public const double HighDensity = 0.03;
-
     [GeneratedRegex(@"[\p{L}\p{N}]+")]
     private static partial Regex WordRegex();
 
-    public Dictionary<string, double> ScoreKeywords(string content, IEnumerable<string> keywords, TextLanguage language = TextLanguage.Auto)
+    public SeoReport Analyze(string content, IEnumerable<string> keywords, ContentType? type = null, TextLanguage language = TextLanguage.Auto)
     {
-        var scores = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         var words = Tokenize(content);
         if (language == TextLanguage.Auto) language = Languages.Detect(content);
+        var rules = SeoRules.For(type, words.Count);
 
-        foreach (var keyword in keywords)
+        var insights = new List<KeywordInsight>();
+        foreach (var keyword in keywords.Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => k.Trim()))
         {
-            if (string.IsNullOrWhiteSpace(keyword) || scores.ContainsKey(keyword.Trim())) continue;
+            if (insights.Any(i => string.Equals(i.Keyword, keyword, StringComparison.OrdinalIgnoreCase))) continue;
 
             var phrase = Tokenize(keyword);
             var occurrences = CountOccurrences(words, phrase.Select(w => WordMatcher.For(w, language)).ToList());
-            var density = words.Count == 0 ? 0.0 : (double)occurrences * phrase.Count / words.Count;
-            scores[keyword.Trim()] = Math.Round(density, 4);
+            var density = words.Count == 0 ? 0.0 : Math.Round((double)occurrences * phrase.Count / words.Count, 4);
+            insights.Add(new KeywordInsight(keyword, occurrences, density, rules.Rate(occurrences, density)));
         }
 
-        return scores;
+        return new SeoReport(rules.Mode, rules.Target, words.Count, insights);
     }
 
-    public string BuildSeoSummary(string content, IEnumerable<string> keywords, TextLanguage language = TextLanguage.Auto)
-    {
-        var wordCount = CountWords(content);
-        var scores = ScoreKeywords(content, keywords, language);
-        if (scores.Count == 0)
-        {
-            return $"{wordCount} words. No SEO keywords provided — add some to optimize your content.";
-        }
-
-        var parts = scores.Select(kvp =>
-            $"{kvp.Key}: {(kvp.Value * 100).ToString("0.0", CultureInfo.InvariantCulture)}% ({Rate(kvp.Value)})");
-        return $"{wordCount} words. Keyword density: " + string.Join(", ", parts) + ".";
-    }
+    public Dictionary<string, double> ScoreKeywords(string content, IEnumerable<string> keywords, TextLanguage language = TextLanguage.Auto) =>
+        Analyze(content, keywords, language: language).Keywords
+            .ToDictionary(k => k.Keyword, k => k.Density, StringComparer.OrdinalIgnoreCase);
 
     public int CountWords(string content) => Tokenize(content).Count;
-
-    public static string Rate(double density) => density switch
-    {
-        0 => "missing",
-        < LowDensity => "low",
-        <= HighDensity => "good",
-        _ => "too high"
-    };
 
     private static List<string> Tokenize(string? text) =>
         string.IsNullOrWhiteSpace(text)

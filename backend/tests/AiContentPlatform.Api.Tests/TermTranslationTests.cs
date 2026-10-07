@@ -133,7 +133,7 @@ public class TermTranslationTests : IClassFixture<ApiFactory>
         await GenerateAsync(["blog"], project.Id);
 
         var sent = FakeFinnishProvider.LastRequest!;
-        Assert.Equal(["blogi"], sent.Keywords);
+        Assert.Equal(["blogi"], sent.Keywords!);
         Assert.Equal(["tuoreeltaan paahdettu"], sent.Brand!.Voice.PreferredTerms);
         Assert.Equal(["cheap", "halpa"], sent.Brand.Voice.AvoidTerms);
 

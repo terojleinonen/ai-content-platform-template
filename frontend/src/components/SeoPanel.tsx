@@ -1,59 +1,50 @@
 import { originalsOf } from '../api'
+import type { KeywordInsight, SeoReport } from '../types'
 
-const LOW = 0.005
-const HIGH = 0.03
-
-function rate(density: number) {
-  if (density === 0) return { label: 'missing', tone: 'bad' }
-  if (density < LOW) return { label: 'low', tone: 'warn' }
-  if (density <= HIGH) return { label: 'good', tone: 'good' }
-  return { label: 'too high', tone: 'warn' }
+const TONES: Record<KeywordInsight['rating'], string> = {
+  missing: 'bad',
+  low: 'warn',
+  good: 'good',
+  'too high': 'warn',
+  'too many': 'warn',
 }
 
-export function SeoPanel({
-  wordCount,
-  scores,
-  translations,
-}: {
-  wordCount: number
-  scores?: Record<string, number>
-  translations?: Record<string, string> | null
-}) {
-  const entries = Object.entries(scores ?? {})
+export function SeoPanel({ report, translations }: { report: SeoReport; translations?: Record<string, string> | null }) {
   const originals = originalsOf(translations)
+  const byMentions = report.mode === 'Mentions'
+
+  // Bar shows how far into (or past) the target each keyword is.
+  const fill = (k: KeywordInsight) => (byMentions ? Math.min(k.occurrences / 3, 1) : Math.min(k.density / 0.05, 1))
 
   return (
     <div className="seo">
       <div className="seo-header">
         <span className="label">SEO</span>
-        <span className="muted">{wordCount} words</span>
+        <span className="muted">{report.wordCount} words</span>
       </div>
-      {entries.length === 0 ? (
-        <p className="muted small">Add keywords to see keyword density.</p>
+      {report.keywords.length === 0 ? (
+        <p className="muted small">Add keywords to see how well they're used.</p>
       ) : (
         <ul className="seo-list">
-          {entries.map(([keyword, density]) => {
-            const r = rate(density)
-            return (
-              <li key={keyword}>
-                <div className="seo-row">
-                  <span>
-                    {keyword}
-                    {originals.has(keyword.toLowerCase()) && <span className="muted small"> ({originals.get(keyword.toLowerCase())})</span>}
-                  </span>
-                  <span className={`pill ${r.tone}`}>
-                    {(density * 100).toFixed(1)}% · {r.label}
-                  </span>
-                </div>
-                <div className="bar">
-                  <div className={`bar-fill ${r.tone}`} style={{ width: `${Math.min(density / 0.05, 1) * 100}%` }} />
-                </div>
-              </li>
-            )
-          })}
+          {report.keywords.map((k) => (
+            <li key={k.keyword}>
+              <div className="seo-row">
+                <span>
+                  {k.keyword}
+                  {originals.has(k.keyword.toLowerCase()) && <span className="muted small"> ({originals.get(k.keyword.toLowerCase())})</span>}
+                </span>
+                <span className={`pill ${TONES[k.rating]}`}>
+                  {byMentions ? `${k.occurrences}×` : `${(k.density * 100).toFixed(1)}%`} · {k.rating}
+                </span>
+              </div>
+              <div className="bar">
+                <div className={`bar-fill ${TONES[k.rating]}`} style={{ width: `${fill(k) * 100}%` }} />
+              </div>
+            </li>
+          ))}
         </ul>
       )}
-      <p className="muted small">Target density: 0.5% – 3% per keyword. Inflected forms count (e.g. blogi → blogia).</p>
+      <p className="muted small">{report.target} Inflected forms count (e.g. blogi → blogia).</p>
     </div>
   )
 }

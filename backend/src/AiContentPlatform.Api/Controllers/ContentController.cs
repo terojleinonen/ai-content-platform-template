@@ -3,6 +3,7 @@ using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using AiContentPlatform.Api.Data;
 using AiContentPlatform.Api.Dtos;
 using AiContentPlatform.Api.Services;
@@ -15,7 +16,10 @@ namespace AiContentPlatform.Api.Controllers;
 [Route("api/[controller]")]
 public class ContentController : ControllerBase
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
+    {
+        Converters = { new JsonStringEnumConverter() }
+    };
 
     private readonly IAiTextService _aiTextService;
     private readonly AppDbContext _db;
