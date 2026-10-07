@@ -9,6 +9,7 @@ import type {
   Project,
   SaveContentItem,
   TransformContentRequest,
+  UsageReport,
 } from './types'
 
 const BASE = import.meta.env.VITE_API_BASE ?? ''
@@ -131,6 +132,8 @@ export const api = {
   updateContent: (id: string, item: SaveContentItem) =>
     request<ContentItem>('PUT', `/api/content-items/${id}`, item),
   deleteContent: (id: string) => request<void>('DELETE', `/api/content-items/${id}`),
+
+  usage: (days: number) => request<UsageReport>('GET', `/api/usage?days=${days}`),
 }
 
 /**

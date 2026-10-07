@@ -42,7 +42,7 @@ internal sealed class FakeFinnishProvider : ITextGenerationProvider
 
     public IAsyncEnumerable<string> StreamTransformAsync(TransformContentRequest request, CancellationToken cancellationToken = default) => Stream(cancellationToken);
 
-    public Task<IReadOnlyList<string>> TranslateTermsAsync(IReadOnlyList<string> terms, string language, CancellationToken cancellationToken = default)
+    public Task<IReadOnlyList<string>> TranslateTermsAsync(IReadOnlyList<string> terms, string language, UsageMeter usage, CancellationToken cancellationToken = default)
     {
         Interlocked.Increment(ref TranslateCalls);
         if (FailTranslation) throw new AiProviderException(Name, "translation failed");

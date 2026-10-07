@@ -12,6 +12,7 @@ public class AppDbContext : DbContext
     public DbSet<User> Users => Set<User>();
     public DbSet<Project> Projects => Set<Project>();
     public DbSet<ContentItem> ContentItems => Set<ContentItem>();
+    public DbSet<AiUsageRecord> AiUsage => Set<AiUsageRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -30,6 +31,19 @@ public class AppDbContext : DbContext
                 .WithMany(u => u.Projects)
                 .HasForeignKey(p => p.OwnerId)
                 .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<AiUsageRecord>(e =>
+        {
+            e.ToTable("AiUsage");
+            e.HasIndex(u => u.CreatedAt);
+            e.HasIndex(u => u.ProjectId);
+            e.Property(u => u.Operation).HasConversion<string>().HasMaxLength(32);
+            e.Property(u => u.Status).HasConversion<string>().HasMaxLength(16);
+            e.Property(u => u.Detail).HasMaxLength(64);
+            e.Property(u => u.Provider).HasMaxLength(32);
+            e.Property(u => u.Model).HasMaxLength(100);
+            // No FK: usage history is kept (for billing) even when a project is deleted.
         });
 
         modelBuilder.Entity<ContentItem>(e =>

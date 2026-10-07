@@ -26,14 +26,15 @@ public class OpenAiTextProvider : LlmTextProvider
 
     public override string Name => AiProviderNames.OpenAI;
 
-    protected override async IAsyncEnumerable<string> StreamCompletionAsync(string systemPrompt, string userPrompt, [EnumeratorCancellation] CancellationToken cancellationToken)
+    protected override async IAsyncEnumerable<string> StreamCompletionAsync(string systemPrompt, string userPrompt, UsageMeter usage, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var payload = new ChatRequest(_options.Model,
         [
             new ChatMessage("system", systemPrompt),
             new ChatMessage("user", userPrompt)
-        ], Stream: true);
+        ], Stream: true, new StreamOptions(IncludeUsage: true));
 
+        usage.Model = _options.Model;
         using var response = await SendAsync(payload, cancellationToken);
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
 
@@ -46,6 +47,14 @@ public class OpenAiTextProvider : LlmTextProvider
             if (chunk?.Error is { } error)
             {
                 throw new AiProviderException(Name, error.Message ?? "Stream error.");
+            }
+
+            // With include_usage, the last chunk has empty choices and the token counts.
+            if (chunk?.Usage is { } reported)
+            {
+                usage.InputTokens = reported.PromptTokens;
+                usage.OutputTokens = reported.CompletionTokens;
+                usage.OutputFinal = true;
             }
 
             var text = chunk?.Choices?.FirstOrDefault()?.Delta?.Content;
@@ -87,7 +96,14 @@ public class OpenAiTextProvider : LlmTextProvider
     private record ChatRequest(
         [property: JsonPropertyName("model")] string Model,
         [property: JsonPropertyName("messages")] ChatMessage[] Messages,
-        [property: JsonPropertyName("stream")] bool Stream);
+        [property: JsonPropertyName("stream")] bool Stream,
+        [property: JsonPropertyName("stream_options")] StreamOptions StreamOptions);
+
+    private record StreamOptions([property: JsonPropertyName("include_usage")] bool IncludeUsage);
+
+    private record ChunkUsage(
+        [property: JsonPropertyName("prompt_tokens")] int PromptTokens,
+        [property: JsonPropertyName("completion_tokens")] int CompletionTokens);
 
     private record ChatMessage(
         [property: JsonPropertyName("role")] string Role,
@@ -95,7 +111,8 @@ public class OpenAiTextProvider : LlmTextProvider
 
     private record ChatChunk(
         [property: JsonPropertyName("choices")] Choice[]? Choices,
-        [property: JsonPropertyName("error")] ChunkError? Error);
+        [property: JsonPropertyName("error")] ChunkError? Error,
+        [property: JsonPropertyName("usage")] ChunkUsage? Usage);
 
     private record Choice([property: JsonPropertyName("delta")] ChatMessage? Delta);
 

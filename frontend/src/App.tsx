@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { api } from './api'
 import { ImagesPage } from './pages/ImagesPage'
 import { ProjectsPage } from './pages/ProjectsPage'
+import { UsagePage } from './pages/UsagePage'
 import { WritePage } from './pages/WritePage'
 import type { Health } from './types'
 
@@ -9,6 +10,7 @@ const PAGES = {
   write: { label: 'Write', component: WritePage },
   projects: { label: 'Projects', component: ProjectsPage },
   images: { label: 'Images', component: ImagesPage },
+  usage: { label: 'Usage', component: UsagePage },
 } as const
 type PageKey = keyof typeof PAGES
 

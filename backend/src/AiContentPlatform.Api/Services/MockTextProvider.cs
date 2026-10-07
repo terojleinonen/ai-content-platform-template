@@ -29,18 +29,33 @@ public partial class MockTextProvider : ITextGenerationProvider
     private static partial Regex ChunkRegex();
 
     public IAsyncEnumerable<string> StreamContentAsync(GenerateContentRequest request, CancellationToken cancellationToken = default) =>
-        StreamWordsAsync(Generate(request), cancellationToken);
+        StreamWordsAsync(Generate(request), ContentPrompt.BuildUserPrompt(request), request.Usage, cancellationToken);
 
     public IAsyncEnumerable<string> StreamTransformAsync(TransformContentRequest request, CancellationToken cancellationToken = default) =>
-        StreamWordsAsync(Transform(request), cancellationToken);
+        StreamWordsAsync(Transform(request), ContentPrompt.BuildTransformPrompt(request), request.Usage, cancellationToken);
 
     // The mock can't translate, so terms stay as they are.
-    public Task<IReadOnlyList<string>> TranslateTermsAsync(IReadOnlyList<string> terms, string language, CancellationToken cancellationToken = default) =>
-        Task.FromResult(terms);
+    public Task<IReadOnlyList<string>> TranslateTermsAsync(IReadOnlyList<string> terms, string language, UsageMeter usage, CancellationToken cancellationToken = default)
+    {
+        Meter(usage, string.Join(", ", terms), string.Join(", ", terms));
+        return Task.FromResult(terms);
+    }
 
-    private async IAsyncEnumerable<string> StreamWordsAsync(GeneratedText generated, [EnumeratorCancellation] CancellationToken cancellationToken)
+    // Free, but metered like a real model (estimated from text length) so the Usage page works offline.
+    private static void Meter(UsageMeter usage, string prompt, string output)
+    {
+        usage.Model = UsageRecorder.MockModel;
+        usage.InputTokens = UsageMeter.EstimateTokens(prompt.Length);
+        usage.OutputTokens = UsageMeter.EstimateTokens(output.Length);
+        usage.Estimated = true;
+        usage.OutputFinal = true;
+    }
+
+    private async IAsyncEnumerable<string> StreamWordsAsync(
+        GeneratedText generated, string prompt, UsageMeter usage, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var markdown = $"# {generated.Title}\n\n{generated.Body}";
+        Meter(usage, prompt, markdown);
 
         foreach (Match chunk in ChunkRegex().Matches(markdown))
         {

@@ -10,7 +10,7 @@ public class AnthropicTextProviderTests
 {
     private const string Stream = """
         event: message_start
-        data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[]}}
+        data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"usage":{"input_tokens":120,"cache_read_input_tokens":30,"output_tokens":1}}}
 
         event: content_block_start
         data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
@@ -42,10 +42,17 @@ public class AnthropicTextProviderTests
         var handler = new StubHandler(HttpStatusCode.OK, Stream, "text/event-stream");
         var provider = CreateProvider(handler);
 
-        var chunks = await provider.StreamContentAsync(new GenerateContentRequest { Prompt = "Say hello" }, TestContext.Current.CancellationToken)
+        var generateRequest = new GenerateContentRequest { Prompt = "Say hello" };
+        var chunks = await provider.StreamContentAsync(generateRequest, TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(["# Hello", "\n\nWorld body."], chunks);
+        var usage = generateRequest.Usage;
+        Assert.Equal("test-model", usage.Model);
+        Assert.Equal(120, usage.InputTokens);
+        Assert.Equal(30, usage.CacheReadTokens);
+        Assert.Equal(7, usage.OutputTokens); // final count from message_delta
+        Assert.False(usage.Estimated);
 
         var request = handler.LastRequest!;
         Assert.Equal("https://api.test/v1/messages", request.RequestUri!.ToString());

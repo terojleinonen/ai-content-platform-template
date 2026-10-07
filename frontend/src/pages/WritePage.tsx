@@ -4,6 +4,7 @@ import { AiTools, TRANSFORM_LABELS, type TransformOptions } from '../components/
 import { BrandCheckPanel } from '../components/BrandCheckPanel'
 import { Markdown } from '../components/Markdown'
 import { SeoPanel } from '../components/SeoPanel'
+import { formatCount, formatUsd } from '../format'
 import { useContentStream } from '../hooks/useContentStream'
 import {
   CONTENT_TYPES,
@@ -388,6 +389,12 @@ export function WritePage() {
                 <span className="pill warn">Stopped early</span>
               ) : (
                 <span className="pill neutral">via {result.provider}</span>
+              )}
+              {result.usage && (
+                <span className="usage-inline" title={`${result.usage.model}${result.usage.estimated ? ' (estimated)' : ''}`}>
+                  {result.usage.estimated && '~'}
+                  {formatCount(result.usage.inputTokens + result.usage.outputTokens)} tokens · {formatUsd(result.usage.costUsd)}
+                </span>
               )}
               <div className="spacer" />
               {history.length > 0 && (

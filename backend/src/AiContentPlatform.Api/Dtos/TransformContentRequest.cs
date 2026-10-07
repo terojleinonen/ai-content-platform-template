@@ -62,6 +62,10 @@ public class TransformContentRequest : IValidatableObject
     [JsonIgnore]
     public bool TermsLocalized { get; set; }
 
+    /// <summary>Token usage of the main AI call for this request, filled in by the provider.</summary>
+    [JsonIgnore]
+    public UsageMeter Usage { get; } = new();
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         if (Action == TransformAction.ChangeTone && string.IsNullOrWhiteSpace(ToneOfVoice))

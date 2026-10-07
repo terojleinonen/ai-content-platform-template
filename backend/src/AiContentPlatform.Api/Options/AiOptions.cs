@@ -11,8 +11,20 @@ public class AiOptions
     public string ImageProvider { get; set; } = "Auto";
 
     public MockOptions Mock { get; set; } = new();
+
+    /// <summary>Price per model ID, used to estimate the cost of each call.</summary>
+    public Dictionary<string, ModelPrice> Pricing { get; set; } = new(StringComparer.OrdinalIgnoreCase);
     public AnthropicOptions Anthropic { get; set; } = new();
     public OpenAiOptions OpenAI { get; set; } = new();
+}
+
+public class ModelPrice
+{
+    /// <summary>USD per million input tokens.</summary>
+    public double InputPerMTok { get; set; }
+
+    /// <summary>USD per million output tokens.</summary>
+    public double OutputPerMTok { get; set; }
 }
 
 public class MockOptions

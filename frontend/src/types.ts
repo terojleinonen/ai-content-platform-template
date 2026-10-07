@@ -71,6 +71,51 @@ export interface GenerateContentResponse {
   brandCheck?: BrandCheck | null
   /** Keywords/brand terms translated into the content's language: original → translated. */
   termTranslations?: Record<string, string> | null
+  usage?: AiUsageSummary | null
+}
+
+export interface AiUsageSummary {
+  model: string
+  inputTokens: number
+  outputTokens: number
+  costUsd?: number | null
+  estimated: boolean
+}
+
+export type AiOperation = 'Generate' | 'Variant' | 'Transform' | 'TermTranslation' | 'Image'
+export type AiCallStatus = 'Succeeded' | 'Failed' | 'Cancelled'
+
+export interface UsageGroup {
+  key: string
+  label: string
+  calls: number
+  tokens: number
+  costUsd: number
+}
+
+export interface UsageReport {
+  from: string
+  to: string
+  totals: { calls: number; inputTokens: number; outputTokens: number; costUsd: number; unpricedCalls: number; failedCalls: number }
+  byDay: { date: string; calls: number; tokens: number; costUsd: number }[]
+  byOperation: UsageGroup[]
+  byProject: UsageGroup[]
+  byModel: UsageGroup[]
+  recent: {
+    id: string
+    createdAt: string
+    operation: AiOperation
+    detail?: string | null
+    projectName?: string | null
+    provider: string
+    model: string
+    inputTokens: number
+    outputTokens: number
+    estimated: boolean
+    costUsd?: number | null
+    durationMs: number
+    status: AiCallStatus
+  }[]
 }
 
 export const TRANSFORM_ACTIONS = ['Improve', 'Shorten', 'Expand', 'ChangeTone', 'Translate', 'Custom'] as const
