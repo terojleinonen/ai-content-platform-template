@@ -1,4 +1,6 @@
 using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
 using AiContentPlatform.Api.Domain;
 using AiContentPlatform.Api.Dtos;
 
@@ -25,6 +27,14 @@ public static class ContentPrompt
         Respond in Markdown with the complete revised piece. The first line MUST be the title as a
         level-1 heading ("# Title"). Output only the content itself: no preamble, no notes, no code fences.
         """;
+
+    public const string TermTranslationSystemPrompt = """
+        You translate SEO keywords and brand terms for a content marketing platform.
+        Reply with only a JSON array of strings: one translation per input term, in the same order.
+        No commentary, no code fences.
+        """;
+
+    private static readonly JsonSerializerOptions TermJson = new() { Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
 
     // Distinct angles so parallel variants don't all come out the same.
     private static readonly string[] VariantAngles =
@@ -108,7 +118,38 @@ public static class ContentPrompt
             sb.AppendLine($"Preferred terms (use where natural): {string.Join(", ", voice.PreferredTerms)}");
         if (voice.AvoidTerms.Count > 0)
             sb.AppendLine($"Never use these words or phrases: {string.Join(", ", voice.AvoidTerms)}");
+        if (voice.PreferredTerms.Count > 0 || voice.AvoidTerms.Count > 0)
+            sb.AppendLine("When writing in another language than the terms, apply them to their natural equivalents in that language.");
         sb.AppendLine("</brand>");
+    }
+
+    public static string BuildTermTranslationPrompt(IReadOnlyList<string> terms, string language) =>
+        $"""
+        Translate each term into {language} as a native copywriter would naturally write it in marketing text.
+        Prefer short, idiomatic wording; keep established loanwords that copywriters in {language} use as-is
+        (for example industry terms usually left in English). Use the base (dictionary) form.
+        Keep brand and product names unchanged. If a term is already in {language}, return it unchanged.
+        Terms: {JsonSerializer.Serialize(terms, TermJson)}
+        """;
+
+    /// <summary>Reads the JSON array of translated terms; falls back to the originals if it doesn't line up.</summary>
+    public static IReadOnlyList<string> ParseTermList(string output, IReadOnlyList<string> originals)
+    {
+        var start = output.IndexOf('[');
+        var end = output.LastIndexOf(']');
+        if (start < 0 || end <= start) return originals;
+
+        try
+        {
+            var terms = JsonSerializer.Deserialize<string[]>(output[start..(end + 1)]);
+            return terms is not null && terms.Length == originals.Count && terms.All(t => !string.IsNullOrWhiteSpace(t))
+                ? terms.Select(t => t.Trim()).ToArray()
+                : originals;
+        }
+        catch (JsonException)
+        {
+            return originals;
+        }
     }
 
     private static string DescribeTask(TransformContentRequest request) => request.Action switch

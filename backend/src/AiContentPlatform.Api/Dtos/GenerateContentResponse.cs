@@ -11,4 +11,10 @@ public class GenerateContentResponse
 
     /// <summary>Present when the content was written for a project with a brand voice.</summary>
     public BrandCheckResult? BrandCheck { get; set; }
+
+    /// <summary>
+    /// Keywords and brand terms translated into the content's language (original → translated),
+    /// when it differs from the language they were given in. Scores above use the translations.
+    /// </summary>
+    public Dictionary<string, string>? TermTranslations { get; set; }
 }

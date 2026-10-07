@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
-import { api, parseKeywords } from '../api'
+import { api, parseKeywords, translateKeywordField } from '../api'
 import { AiTools, TRANSFORM_LABELS, type TransformOptions } from '../components/AiTools'
 import { BrandCheckPanel } from '../components/BrandCheckPanel'
 import { Markdown } from '../components/Markdown'
@@ -77,6 +77,16 @@ export function WritePage() {
 
   const project = projects.find((p) => p.id === projectId)
 
+  /** Shows a result and switches the keyword field to the language the API scored in. */
+  function showResult(next: GenerateContentResponse) {
+    setResult(next)
+    const translated = translateKeywordField(keywords, next.termTranslations)
+    if (translated) {
+      setKeywords(translated.value)
+      setNotice(`SEO keywords now match the text’s language: ${translated.changed.join(', ')}`)
+    }
+  }
+
   function resetOutput() {
     setError(undefined)
     setNotice(undefined)
@@ -95,7 +105,7 @@ export function WritePage() {
 
     const outcome = await stream.run((onDelta, signal) => api.generateContentStream(brief(), onDelta, signal))
     if (outcome?.kind === 'done') {
-      setResult(outcome.result)
+      showResult(outcome.result)
     } else if (outcome?.kind === 'stopped' && outcome.partial.body) {
       // Keep what was written so far; it can still be edited and saved.
       setResult({
@@ -127,7 +137,7 @@ export function WritePage() {
   }
 
   function chooseVariant(variant: GenerateContentResponse) {
-    setResult(variant)
+    showResult(variant)
     setVariants(undefined)
   }
 
@@ -157,7 +167,7 @@ export function WritePage() {
     )
     if (outcome?.kind === 'done') {
       setHistory((h) => [...h, before])
-      setResult(outcome.result)
+      showResult(outcome.result)
     } else if (outcome?.kind === 'stopped') {
       setNotice('Edit stopped. Your text is unchanged.')
     } else if (outcome?.kind === 'error') {
@@ -411,9 +421,9 @@ export function WritePage() {
             {result.stopped ? (
               <p className="muted small">Generation was stopped, so SEO analysis isn’t available. You can still edit and save the text.</p>
             ) : (
-              <SeoPanel wordCount={result.wordCount} scores={result.keywordScores} />
+              <SeoPanel wordCount={result.wordCount} scores={result.keywordScores} translations={result.termTranslations} />
             )}
-            {result.brandCheck && <BrandCheckPanel check={result.brandCheck} />}
+            {result.brandCheck && <BrandCheckPanel check={result.brandCheck} translations={result.termTranslations} />}
 
             <div className="save-bar">
               {project ? (

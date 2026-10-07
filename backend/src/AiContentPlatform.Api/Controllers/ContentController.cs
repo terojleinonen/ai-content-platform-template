@@ -56,10 +56,11 @@ public class ContentController : ControllerBase
     public async Task<IResult> GenerateStream([FromBody] GenerateContentRequest request, CancellationToken cancellationToken)
     {
         if (!await TryLoadBrandAsync(request.ProjectId, b => request.Brand = b, cancellationToken)) return ProjectNotFoundResult();
+        await _aiTextService.LocalizeTermsAsync(request, cancellationToken);
 
         return TypedResults.ServerSentEvents(StreamEvents(
             _aiTextService.StreamContentAsync(request, cancellationToken),
-            output => _aiTextService.BuildResponse(output, request.Title, request.Keywords, request.Brand),
+            output => _aiTextService.BuildResponse(output, request),
             cancellationToken));
     }
 
@@ -102,10 +103,11 @@ public class ContentController : ControllerBase
     public async Task<IResult> TransformStream([FromBody] TransformContentRequest request, CancellationToken cancellationToken)
     {
         if (!await TryLoadBrandAsync(request.ProjectId, b => request.Brand = b, cancellationToken)) return ProjectNotFoundResult();
+        await _aiTextService.LocalizeTermsAsync(request, cancellationToken);
 
         return TypedResults.ServerSentEvents(StreamEvents(
             _aiTextService.StreamTransformAsync(request, cancellationToken),
-            output => _aiTextService.BuildResponse(output, request.Title, request.Keywords, request.Brand),
+            output => _aiTextService.BuildResponse(output, request),
             cancellationToken));
     }
 

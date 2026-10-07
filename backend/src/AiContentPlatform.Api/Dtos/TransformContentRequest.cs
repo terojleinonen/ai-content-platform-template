@@ -52,6 +52,16 @@ public class TransformContentRequest : IValidatableObject
     [JsonIgnore]
     public BrandContext? Brand { get; set; }
 
+    /// <summary>
+    /// Keywords and brand terms translated into the content's language (original → translated),
+    /// set by the server before writing; null when no translation was needed.
+    /// </summary>
+    [JsonIgnore]
+    public Dictionary<string, string>? TermTranslations { get; set; }
+
+    [JsonIgnore]
+    public bool TermsLocalized { get; set; }
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         if (Action == TransformAction.ChangeTone && string.IsNullOrWhiteSpace(ToneOfVoice))

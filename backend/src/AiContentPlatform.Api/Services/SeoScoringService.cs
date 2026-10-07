@@ -16,17 +16,18 @@ public partial class SeoScoringService : ISeoScoringService
     [GeneratedRegex(@"[\p{L}\p{N}]+")]
     private static partial Regex WordRegex();
 
-    public Dictionary<string, double> ScoreKeywords(string content, IEnumerable<string> keywords)
+    public Dictionary<string, double> ScoreKeywords(string content, IEnumerable<string> keywords, TextLanguage language = TextLanguage.Auto)
     {
         var scores = new Dictionary<string, double>(StringComparer.OrdinalIgnoreCase);
         var words = Tokenize(content);
+        if (language == TextLanguage.Auto) language = Languages.Detect(content);
 
         foreach (var keyword in keywords)
         {
             if (string.IsNullOrWhiteSpace(keyword) || scores.ContainsKey(keyword.Trim())) continue;
 
             var phrase = Tokenize(keyword);
-            var occurrences = CountOccurrences(words, phrase);
+            var occurrences = CountOccurrences(words, phrase.Select(w => WordMatcher.For(w, language)).ToList());
             var density = words.Count == 0 ? 0.0 : (double)occurrences * phrase.Count / words.Count;
             scores[keyword.Trim()] = Math.Round(density, 4);
         }
@@ -34,10 +35,10 @@ public partial class SeoScoringService : ISeoScoringService
         return scores;
     }
 
-    public string BuildSeoSummary(string content, IEnumerable<string> keywords)
+    public string BuildSeoSummary(string content, IEnumerable<string> keywords, TextLanguage language = TextLanguage.Auto)
     {
         var wordCount = CountWords(content);
-        var scores = ScoreKeywords(content, keywords);
+        var scores = ScoreKeywords(content, keywords, language);
         if (scores.Count == 0)
         {
             return $"{wordCount} words. No SEO keywords provided — add some to optimize your content.";
@@ -63,7 +64,7 @@ public partial class SeoScoringService : ISeoScoringService
             ? new List<string>()
             : WordRegex().Matches(text.ToLowerInvariant()).Select(m => m.Value).ToList();
 
-    private static int CountOccurrences(List<string> words, List<string> phrase)
+    private static int CountOccurrences(List<string> words, List<Func<string, bool>> phrase)
     {
         if (phrase.Count == 0 || phrase.Count > words.Count) return 0;
 
@@ -73,7 +74,7 @@ public partial class SeoScoringService : ISeoScoringService
             var match = true;
             for (var j = 0; j < phrase.Count && match; j++)
             {
-                match = words[i + j] == phrase[j];
+                match = phrase[j](words[i + j]);
             }
 
             if (match) count++;
