@@ -55,4 +55,24 @@ public class SeoScoringServiceTests
 
         Assert.Equal("5 words. Keyword density: coffee: 20.0% (too high).", summary);
     }
+
+    [Fact]
+    public void ScoreKeywords_CountsFinnishInflectedForms()
+    {
+        const string text = "Pienyrittäjän arki on kiireinen. Pienyrittäjälle blogi on tärkeä, ja moni pienyrittäjä kirjoittaa blogia.";
+
+        var scores = _seo.ScoreKeywords(text, ["pienyrittäjä", "blogi"]);
+
+        // 3 forms of pienyrittäjä and 2 of blogi in 13 words.
+        Assert.Equal(Math.Round(3.0 / 13, 4), scores["pienyrittäjä"]);
+        Assert.Equal(Math.Round(2.0 / 13, 4), scores["blogi"]);
+    }
+
+    [Fact]
+    public void ScoreKeywords_CountsEnglishPlurals()
+    {
+        var scores = _seo.ScoreKeywords("One bag today, two bags tomorrow and more bags later.", ["bag"]);
+
+        Assert.Equal(Math.Round(3.0 / 10, 4), scores["bag"]);
+    }
 }

@@ -84,4 +84,22 @@ public class ContentPromptTests
         Assert.Contains("SEO keywords to keep: seo", prompt);
         Assert.Contains("<content>\n# My title\n\nOriginal body.\n</content>", prompt.ReplaceLineEndings("\n"));
     }
+
+    [Theory]
+    [InlineData("[\"kahvi\", \"halpa\"]", new[] { "kahvi", "halpa" })]
+    [InlineData("```json\n[\"kahvi\", \"halpa\"]\n```", new[] { "kahvi", "halpa" })]
+    [InlineData("[\"only one\"]", new[] { "coffee", "cheap" })]      // wrong count → originals
+    [InlineData("not json", new[] { "coffee", "cheap" })]
+    [InlineData("[\"kahvi\", \"\"]", new[] { "coffee", "cheap" })]   // blank entry → originals
+    public void ParseTermList_ReadsJsonArrayOrFallsBack(string output, string[] expected) =>
+        Assert.Equal(expected, ContentPrompt.ParseTermList(output, ["coffee", "cheap"]));
+
+    [Fact]
+    public void BuildTermTranslationPrompt_KeepsNonAsciiReadable()
+    {
+        var prompt = ContentPrompt.BuildTermTranslationPrompt(["pienyrittäjä"], "English");
+
+        Assert.Contains("[\"pienyrittäjä\"]", prompt);
+        Assert.Contains("into English", prompt);
+    }
 }

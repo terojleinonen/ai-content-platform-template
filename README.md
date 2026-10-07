@@ -15,7 +15,12 @@ real AI output as soon as you provide an Anthropic or OpenAI key.
 - **AI editing tools** – Improve, Shorten, Expand, Change tone, Translate, or a custom instruction
   ("add a call to action"), on fresh results (with undo) and on saved content (review, then save or cancel).
 - **SEO insights** – word count and keyword density per keyword (multi-word phrases supported),
-  rated *missing / low / good / too high*.
+  rated *missing / low / good / too high*. Inflected forms count: Finnish case endings and consonant
+  gradation (*Helsinki → Helsingissä*, *kauppa → kaupassa*) and English plurals.
+- **Multilingual keywords** – when content is written in, translated to, or edited in another
+  language, keywords and brand terms are first translated to match (one small AI call, cached).
+  The AI then writes with exactly those terms and SEO and brand checks score them; banned terms
+  stay banned in both languages.
 - **Brand voice per project** – voice, default audience, key facts, preferred and banned terms. They're
   added to every prompt for that project (generation, variants, AI tools), and a deterministic
   **brand check** flags banned terms in the output and shows which preferred terms were used.

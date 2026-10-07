@@ -53,6 +53,8 @@ export interface GenerateContentResponse {
   wordCount: number
   provider: string
   brandCheck?: BrandCheck | null
+  /** Keywords/brand terms translated into the content's language: original → translated. */
+  termTranslations?: Record<string, string> | null
 }
 
 export const TRANSFORM_ACTIONS = ['Improve', 'Shorten', 'Expand', 'ChangeTone', 'Translate', 'Custom'] as const

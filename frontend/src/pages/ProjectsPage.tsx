@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
-import { api, parseKeywords } from '../api'
+import { api, parseKeywords, translateKeywordField } from '../api'
 import { AiTools, TRANSFORM_LABELS, type TransformOptions } from '../components/AiTools'
 import { BrandCheckPanel } from '../components/BrandCheckPanel'
 import { BrandVoiceEditor } from '../components/BrandVoiceEditor'
@@ -188,6 +188,7 @@ function ContentEditor({
   const [error, setError] = useState<string>()
   const [notice, setNotice] = useState<string>()
   const [brandCheck, setBrandCheck] = useState<BrandCheck | null>()
+  const [translations, setTranslations] = useState<Record<string, string> | null>()
   const [streamLabel, setStreamLabel] = useState('')
   const stream = useContentStream()
 
@@ -223,7 +224,13 @@ function ContentEditor({
       setTitle(outcome.result.title)
       setBody(outcome.result.body)
       setBrandCheck(outcome.result.brandCheck)
-      setNotice('AI edit applied. Review it, then Save, or Cancel to discard.')
+      setTranslations(outcome.result.termTranslations)
+      const translated = translateKeywordField(keywords, outcome.result.termTranslations)
+      if (translated) setKeywords(translated.value)
+      setNotice(
+        'AI edit applied. Review it, then Save, or Cancel to discard.' +
+          (translated ? ` Keywords now match the text’s language: ${translated.changed.join(', ')}.` : ''),
+      )
     } else if (outcome?.kind === 'stopped') {
       setNotice('Edit stopped. The text is unchanged.')
     } else if (outcome?.kind === 'error') {
@@ -317,7 +324,7 @@ function ContentEditor({
           <textarea rows={18} value={stream.live ? stream.live.body : body} onChange={(e) => setBody(e.target.value)} readOnly={stream.running} />
           <AiTools disabled={stream.running} onRun={runTool} />
           {notice && <p className="notice">{notice}</p>}
-          {brandCheck && <BrandCheckPanel check={brandCheck} />}
+          {brandCheck && <BrandCheckPanel check={brandCheck} translations={translations} />}
           {error && <p className="error">{error}</p>}
         </div>
       ) : (

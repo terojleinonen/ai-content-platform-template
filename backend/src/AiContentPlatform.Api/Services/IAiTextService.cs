@@ -1,3 +1,4 @@
+using System.Text;
 using AiContentPlatform.Api.Dtos;
 
 namespace AiContentPlatform.Api.Services;
@@ -18,8 +19,21 @@ public interface IAiTextService
 
     IAsyncEnumerable<string> StreamTransformAsync(TransformContentRequest request, CancellationToken cancellationToken = default);
 
-    /// <summary>Parses complete output into a title/body response with SEO metrics.</summary>
-    GenerateContentResponse BuildResponse(string output, string? fallbackTitle, IEnumerable<string>? keywords, BrandContext? brand = null);
+    /// <summary>
+    /// When the content is (or will be) in another language than the keywords and brand terms,
+    /// translates them first and rewrites the request to use the translations, so the AI writes
+    /// exactly the terms that are scored. Idempotent; the other methods call it themselves.
+    /// </summary>
+    Task LocalizeTermsAsync(GenerateContentRequest request, CancellationToken cancellationToken = default);
+
+    /// <inheritdoc cref="LocalizeTermsAsync(GenerateContentRequest, CancellationToken)"/>
+    Task LocalizeTermsAsync(TransformContentRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>Turns complete output into the final response with SEO metrics and brand check.</summary>
+    GenerateContentResponse BuildResponse(string output, GenerateContentRequest request);
+
+    /// <inheritdoc cref="BuildResponse(string, GenerateContentRequest)"/>
+    GenerateContentResponse BuildResponse(string output, TransformContentRequest request);
 }
 
 /// <summary>
@@ -33,6 +47,9 @@ public interface ITextGenerationProvider
     IAsyncEnumerable<string> StreamContentAsync(GenerateContentRequest request, CancellationToken cancellationToken = default);
 
     IAsyncEnumerable<string> StreamTransformAsync(TransformContentRequest request, CancellationToken cancellationToken = default);
+
+    /// <summary>Translates short terms (keywords, brand terms) into a language; same order and count.</summary>
+    Task<IReadOnlyList<string>> TranslateTermsAsync(IReadOnlyList<string> terms, string language, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -47,6 +64,17 @@ public abstract class LlmTextProvider : ITextGenerationProvider
 
     public IAsyncEnumerable<string> StreamTransformAsync(TransformContentRequest request, CancellationToken cancellationToken = default) =>
         StreamCompletionAsync(ContentPrompt.EditSystemPrompt, ContentPrompt.BuildTransformPrompt(request), cancellationToken);
+
+    public async Task<IReadOnlyList<string>> TranslateTermsAsync(IReadOnlyList<string> terms, string language, CancellationToken cancellationToken = default)
+    {
+        var output = new StringBuilder();
+        await foreach (var chunk in StreamCompletionAsync(
+            ContentPrompt.TermTranslationSystemPrompt, ContentPrompt.BuildTermTranslationPrompt(terms, language), cancellationToken))
+        {
+            output.Append(chunk);
+        }
+        return ContentPrompt.ParseTermList(output.ToString(), terms);
+    }
 
     protected abstract IAsyncEnumerable<string> StreamCompletionAsync(string systemPrompt, string userPrompt, CancellationToken cancellationToken);
 }

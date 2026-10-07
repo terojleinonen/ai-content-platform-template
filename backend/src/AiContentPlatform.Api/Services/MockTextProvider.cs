@@ -34,6 +34,10 @@ public partial class MockTextProvider : ITextGenerationProvider
     public IAsyncEnumerable<string> StreamTransformAsync(TransformContentRequest request, CancellationToken cancellationToken = default) =>
         StreamWordsAsync(Transform(request), cancellationToken);
 
+    // The mock can't translate, so terms stay as they are.
+    public Task<IReadOnlyList<string>> TranslateTermsAsync(IReadOnlyList<string> terms, string language, CancellationToken cancellationToken = default) =>
+        Task.FromResult(terms);
+
     private async IAsyncEnumerable<string> StreamWordsAsync(GeneratedText generated, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var markdown = $"# {generated.Title}\n\n{generated.Body}";

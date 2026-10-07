@@ -1,3 +1,5 @@
+import { originalsOf } from '../api'
+
 const LOW = 0.005
 const HIGH = 0.03
 
@@ -8,8 +10,17 @@ function rate(density: number) {
   return { label: 'too high', tone: 'warn' }
 }
 
-export function SeoPanel({ wordCount, scores }: { wordCount: number; scores?: Record<string, number> }) {
+export function SeoPanel({
+  wordCount,
+  scores,
+  translations,
+}: {
+  wordCount: number
+  scores?: Record<string, number>
+  translations?: Record<string, string> | null
+}) {
   const entries = Object.entries(scores ?? {})
+  const originals = originalsOf(translations)
 
   return (
     <div className="seo">
@@ -26,7 +37,10 @@ export function SeoPanel({ wordCount, scores }: { wordCount: number; scores?: Re
             return (
               <li key={keyword}>
                 <div className="seo-row">
-                  <span>{keyword}</span>
+                  <span>
+                    {keyword}
+                    {originals.has(keyword.toLowerCase()) && <span className="muted small"> ({originals.get(keyword.toLowerCase())})</span>}
+                  </span>
                   <span className={`pill ${r.tone}`}>
                     {(density * 100).toFixed(1)}% · {r.label}
                   </span>
@@ -39,7 +53,7 @@ export function SeoPanel({ wordCount, scores }: { wordCount: number; scores?: Re
           })}
         </ul>
       )}
-      <p className="muted small">Target density: 0.5% – 3% per keyword.</p>
+      <p className="muted small">Target density: 0.5% – 3% per keyword. Inflected forms count (e.g. blogi → blogia).</p>
     </div>
   )
 }

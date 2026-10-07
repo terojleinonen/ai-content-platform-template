@@ -13,6 +13,7 @@ builder.Services.AddControllers()
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddProblemDetails();
+builder.Services.AddMemoryCache();
 builder.Services.AddExceptionHandler<AiProviderExceptionHandler>();
 
 builder.Services.AddCors(o => o.AddDefaultPolicy(p => p

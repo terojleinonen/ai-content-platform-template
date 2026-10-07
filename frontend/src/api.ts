@@ -133,6 +133,27 @@ export const api = {
   deleteContent: (id: string) => request<void>('DELETE', `/api/content-items/${id}`),
 }
 
+/**
+ * Rewrites a comma-separated keyword field with the translations the API used, so follow-up
+ * edits and SEO scoring stay in the content's language. Returns null when nothing changed.
+ */
+export function translateKeywordField(value: string, translations?: Record<string, string> | null) {
+  if (!translations) return null
+  const lookup = new Map(Object.entries(translations).map(([k, v]) => [k.toLowerCase(), v]))
+  const changed: string[] = []
+  const keywords = parseKeywords(value).map((k) => {
+    const translated = lookup.get(k.toLowerCase())
+    if (!translated) return k
+    changed.push(`${k} → ${translated}`)
+    return translated
+  })
+  return changed.length ? { value: keywords.join(', '), changed } : null
+}
+
+/** Maps translated term → original, for showing the original next to a translated term. */
+export const originalsOf = (translations?: Record<string, string> | null) =>
+  new Map(Object.entries(translations ?? {}).map(([original, translated]) => [translated.toLowerCase(), original]))
+
 export const parseKeywords = (value: string) =>
   value
     .split(',')

@@ -36,6 +36,16 @@ public class GenerateContentRequest
     public BrandContext? Brand { get; set; }
 
     /// <summary>
+    /// Keywords and brand terms translated into the content's language (original → translated),
+    /// set by the server before writing; null when no translation was needed.
+    /// </summary>
+    [JsonIgnore]
+    public Dictionary<string, string>? TermTranslations { get; set; }
+
+    [JsonIgnore]
+    public bool TermsLocalized { get; set; }
+
+    /// <summary>
     /// 1-based variant number when generating several alternatives; 0 for a single generation.
     /// Set by the server, not by clients.
     /// </summary>
@@ -53,6 +63,8 @@ public class GenerateContentRequest
         Keywords = Keywords,
         ProjectId = ProjectId,
         Brand = Brand,
+        TermTranslations = TermTranslations,
+        TermsLocalized = TermsLocalized,
         Variant = variant
     };
 }
