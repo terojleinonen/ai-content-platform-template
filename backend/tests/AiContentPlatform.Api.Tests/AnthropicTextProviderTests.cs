@@ -1,26 +1,51 @@
 using System.Net;
-using System.Text;
 using System.Text.Json;
 using AiContentPlatform.Api.Dtos;
 using AiContentPlatform.Api.Options;
 using AiContentPlatform.Api.Services;
-using Microsoft.Extensions.Options;
 
 namespace AiContentPlatform.Api.Tests;
 
 public class AnthropicTextProviderTests
 {
+    private const string Stream = """
+        event: message_start
+        data: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[]}}
+
+        event: content_block_start
+        data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}
+
+        event: ping
+        data: {"type": "ping"}
+
+        event: content_block_delta
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"# Hello"}}
+
+        event: content_block_delta
+        data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"\n\nWorld body."}}
+
+        event: content_block_stop
+        data: {"type":"content_block_stop","index":0}
+
+        event: message_delta
+        data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":7}}
+
+        event: message_stop
+        data: {"type":"message_stop"}
+
+
+        """;
+
     [Fact]
-    public async Task GenerateAsync_SendsMessagesRequestAndParsesResponse()
+    public async Task StreamAsync_SendsStreamingRequestAndYieldsTextDeltas()
     {
-        var handler = new StubHandler(HttpStatusCode.OK,
-            """{"content":[{"type":"text","text":"# Hello\n\nWorld body."}],"stop_reason":"end_turn"}""");
+        var handler = new StubHandler(HttpStatusCode.OK, Stream, "text/event-stream");
         var provider = CreateProvider(handler);
 
-        var result = await provider.GenerateAsync(new GenerateContentRequest { Prompt = "Say hello" }, TestContext.Current.CancellationToken);
+        var chunks = await provider.StreamAsync(new GenerateContentRequest { Prompt = "Say hello" }, TestContext.Current.CancellationToken)
+            .ToListAsync(TestContext.Current.CancellationToken);
 
-        Assert.Equal("Hello", result.Title);
-        Assert.Equal("World body.", result.Body);
+        Assert.Equal(["# Hello", "\n\nWorld body."], chunks);
 
         var request = handler.LastRequest!;
         Assert.Equal("https://api.test/v1/messages", request.RequestUri!.ToString());
@@ -30,16 +55,36 @@ public class AnthropicTextProviderTests
         using var body = JsonDocument.Parse(handler.LastBody!);
         Assert.Equal("test-model", body.RootElement.GetProperty("model").GetString());
         Assert.Equal(512, body.RootElement.GetProperty("max_tokens").GetInt32());
+        Assert.True(body.RootElement.GetProperty("stream").GetBoolean());
         Assert.Contains("Say hello", body.RootElement.GetProperty("messages")[0].GetProperty("content").GetString());
     }
 
     [Fact]
-    public async Task GenerateAsync_ThrowsAiProviderExceptionOnHttpError()
+    public async Task StreamAsync_ThrowsOnErrorEvent()
+    {
+        const string errorStream = """
+            event: error
+            data: {"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}
+
+
+            """;
+        var provider = CreateProvider(new StubHandler(HttpStatusCode.OK, errorStream, "text/event-stream"));
+
+        var ex = await Assert.ThrowsAsync<AiProviderException>(() =>
+            provider.StreamAsync(new GenerateContentRequest { Prompt = "x" }, TestContext.Current.CancellationToken)
+                .ToListAsync(TestContext.Current.CancellationToken));
+
+        Assert.Contains("Overloaded", ex.Message);
+    }
+
+    [Fact]
+    public async Task StreamAsync_ThrowsOnHttpError()
     {
         var provider = CreateProvider(new StubHandler(HttpStatusCode.Unauthorized, """{"error":"invalid x-api-key"}"""));
 
         var ex = await Assert.ThrowsAsync<AiProviderException>(() =>
-            provider.GenerateAsync(new GenerateContentRequest { Prompt = "x" }, TestContext.Current.CancellationToken));
+            provider.StreamAsync(new GenerateContentRequest { Prompt = "x" }, TestContext.Current.CancellationToken)
+                .ToListAsync(TestContext.Current.CancellationToken));
 
         Assert.Contains("401", ex.Message);
     }
@@ -52,21 +97,5 @@ public class AnthropicTextProviderTests
         });
         var http = new HttpClient(handler) { BaseAddress = new Uri("https://api.test/") };
         return new AnthropicTextProvider(http, options);
-    }
-
-    private sealed class StubHandler(HttpStatusCode status, string responseBody) : HttpMessageHandler
-    {
-        public HttpRequestMessage? LastRequest { get; private set; }
-        public string? LastBody { get; private set; }
-
-        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
-        {
-            LastRequest = request;
-            LastBody = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
-            return new HttpResponseMessage(status)
-            {
-                Content = new StringContent(responseBody, Encoding.UTF8, "application/json")
-            };
-        }
     }
 }

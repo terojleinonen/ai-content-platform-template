@@ -9,7 +9,8 @@ real AI output as soon as you provide an Anthropic or OpenAI key.
 ## Features
 
 - **Write** – generate blog posts, product descriptions, social posts and emails from a brief
-  (audience, tone, language, SEO keywords); edit the result and save it to a project.
+  (audience, tone, language, SEO keywords). Text streams in live as the model writes it, and can be
+  stopped at any time; edit the result and save it to a project.
 - **SEO insights** – word count and keyword density per keyword (multi-word phrases supported),
   rated *missing / low / good / too high*.
 - **Projects** – organize saved content; view, edit and delete items (SQLite via EF Core).
@@ -74,6 +75,7 @@ Other settings (in `appsettings.json`, overridable via env vars like `Ai__Anthro
 | `Ai:TextProvider` | `Auto` (`Mock`, `Anthropic`, `OpenAI`) |
 | `Ai:ImageProvider` | `Auto` (`Mock`, `OpenAI`) |
 | `Ai:Anthropic:Model` | `claude-sonnet-5-5` |
+| `Ai:Mock:StreamDelayMs` | `25` (simulated typing speed of the mock) |
 | `Ai:Anthropic:MaxTokens` | `2048` |
 | `Ai:OpenAI:Model` / `ImageModel` | `gpt-4.1-mini` / `gpt-image-1` |
 | `Ai:OpenAI:BaseUrl` | `https://api.openai.com/` (point at any OpenAI-compatible endpoint) |
@@ -87,11 +89,22 @@ Provider errors are returned as HTTP 502 `ProblemDetails` and shown in the UI.
 |---|---|---|
 | GET | `/api/health` | Status and active AI providers |
 | POST | `/api/content/generate` | Generate content + SEO scores |
+| POST | `/api/content/generate/stream` | Same, streamed as Server-Sent Events (see below) |
 | POST | `/api/image/generate` | Generate an image (URL or `data:` URI) |
 | GET/POST | `/api/projects` | List / create projects |
 | GET/PUT/DELETE | `/api/projects/{id}` | Get / rename / delete a project |
 | GET/POST | `/api/projects/{id}/content` | List / add content items |
 | GET/PUT/DELETE | `/api/content-items/{id}` | Get / update / delete a content item |
+
+The streaming endpoint sends `delta` events with `{"text": "..."}` Markdown chunks as they are
+written, then one `done` event with the full response (title, body, SEO). If the provider fails
+mid-stream it sends an `error` event with `{"message": "..."}`. Closing the connection cancels the
+upstream AI request.
+
+```bash
+curl -N -X POST localhost:5080/api/content/generate/stream \
+  -H 'content-type: application/json' -d '{"prompt":"Coffee brewing tips","type":"SocialPost"}'
+```
 
 Explore and try all endpoints with Swagger UI at http://localhost:5080/swagger (Development).
 

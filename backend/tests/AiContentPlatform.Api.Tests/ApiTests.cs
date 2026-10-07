@@ -18,6 +18,7 @@ public sealed class ApiFactory : WebApplicationFactory<Program>
         builder.UseSetting("ConnectionStrings:Default", $"Data Source={_dbPath};Pooling=False");
         builder.UseSetting("Ai:TextProvider", "Mock");
         builder.UseSetting("Ai:ImageProvider", "Mock");
+        builder.UseSetting("Ai:Mock:StreamDelayMs", "0");
     }
 
     public override async ValueTask DisposeAsync()
@@ -69,6 +70,45 @@ public class ApiTests : IClassFixture<ApiFactory>
         Assert.True(result.KeywordScores!["coffee"] > 0);
         Assert.True(result.WordCount > 50);
         Assert.Equal("Mock", result.Provider);
+    }
+
+    [Fact]
+    public async Task GenerateContentStream_StreamsDeltasThenDoneEvent()
+    {
+        var response = await _client.PostAsJsonAsync("/api/content/generate/stream", new GenerateContentRequest
+        {
+            Prompt = "coffee subscriptions",
+            Type = ContentType.SocialPost,
+            Keywords = ["coffee"]
+        }, Json, Ct);
+
+        response.EnsureSuccessStatusCode();
+        Assert.Equal("text/event-stream", response.Content.Headers.ContentType?.MediaType);
+
+        var events = new List<(string Type, JsonElement Data)>();
+        await using var stream = await response.Content.ReadAsStreamAsync(Ct);
+        await foreach (var item in System.Net.ServerSentEvents.SseParser.Create(stream).EnumerateAsync(Ct))
+        {
+            events.Add((item.EventType, JsonDocument.Parse(item.Data).RootElement.Clone()));
+        }
+
+        var deltas = events.Where(e => e.Type == "delta").Select(e => e.Data.GetProperty("text").GetString()).ToList();
+        Assert.True(deltas.Count > 5);
+        Assert.StartsWith("# ", string.Concat(deltas));
+
+        var done = Assert.Single(events, e => e.Type == "done").Data;
+        Assert.Equal("done", events[^1].Type);
+        Assert.Equal("Mock", done.GetProperty("provider").GetString());
+        Assert.Equal(string.Concat(deltas)[2..string.Concat(deltas).IndexOf('\n')], done.GetProperty("title").GetString());
+        Assert.True(done.GetProperty("keywordScores").GetProperty("coffee").GetDouble() > 0);
+    }
+
+    [Fact]
+    public async Task GenerateContentStream_WithoutPrompt_Returns400()
+    {
+        var response = await _client.PostAsJsonAsync("/api/content/generate/stream", new { prompt = "" }, Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
     }
 
     [Fact]
