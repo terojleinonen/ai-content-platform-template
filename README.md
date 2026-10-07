@@ -284,6 +284,11 @@ This is a GitHub template repository. To build your own product on it:
 5. Deploy with the Docker image (see Option C in [Quick start](#quick-start)) behind HTTPS, with
    `BEHIND_PROXY=true` and a strong `POSTGRES_PASSWORD`.
 
+## Contributing
+
+Contributions are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup,
+tests, database migrations and the pull request process.
+
 ## License
 
 [MIT](LICENSE) © 2026 Tero Leinonen. You can use this template for personal and commercial
