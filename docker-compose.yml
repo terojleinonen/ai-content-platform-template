@@ -1,0 +1,43 @@
+# The app with PostgreSQL. Configure via a .env file next to this one (see .env.example):
+#   docker compose up --build     → http://localhost:8080
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: aicp
+      POSTGRES_USER: aicp
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aicp-dev-password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aicp -d aicp"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    environment:
+      Database__Provider: Postgres
+      ConnectionStrings__Default: Host=db;Database=aicp;Username=aicp;Password=${POSTGRES_PASSWORD:-aicp-dev-password}
+      # AI providers: leave empty to run with the built-in mock generators.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Optional external sign-in.
+      Authentication__Google__ClientId: ${GOOGLE_CLIENT_ID:-}
+      Authentication__Google__ClientSecret: ${GOOGLE_CLIENT_SECRET:-}
+      Authentication__Microsoft__ClientId: ${MICROSOFT_CLIENT_ID:-}
+      Authentication__Microsoft__ClientSecret: ${MICROSOFT_CLIENT_SECRET:-}
+      # Set to true behind an HTTPS reverse proxy, so the app sees the original scheme and host.
+      ASPNETCORE_FORWARDEDHEADERS_ENABLED: ${BEHIND_PROXY:-false}
+    volumes:
+      - keys:/data/keys
+
+volumes:
+  pgdata:
+  keys:

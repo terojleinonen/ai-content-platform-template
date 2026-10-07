@@ -5,9 +5,14 @@ using Microsoft.EntityFrameworkCore;
 
 namespace AiContentPlatform.Api.Data;
 
-public class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
+/// <summary>
+/// The app's database. Abstract because each database engine has its own concrete context (and
+/// migrations): <see cref="SqliteAppDbContext"/> and <see cref="PostgresAppDbContext"/>. Code
+/// depends on this base type; <see cref="DatabaseSetup"/> registers the configured one.
+/// </summary>
+public abstract class AppDbContext : IdentityDbContext<User, IdentityRole<Guid>, Guid>
 {
-    public AppDbContext(DbContextOptions<AppDbContext> options) : base(options)
+    protected AppDbContext(DbContextOptions options) : base(options)
     {
     }
 

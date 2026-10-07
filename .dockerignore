@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+**/node_modules/
+**/wwwroot/
+**/*.db
+**/*.db-*
+.git/
+.github/
+.env
+.env.*
+backend/tests/
