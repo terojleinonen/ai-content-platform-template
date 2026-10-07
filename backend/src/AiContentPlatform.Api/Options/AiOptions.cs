@@ -10,8 +10,15 @@ public class AiOptions
     /// <summary>"Auto", "Mock" or "OpenAI".</summary>
     public string ImageProvider { get; set; } = "Auto";
 
+    public MockOptions Mock { get; set; } = new();
     public AnthropicOptions Anthropic { get; set; } = new();
     public OpenAiOptions OpenAI { get; set; } = new();
+}
+
+public class MockOptions
+{
+    /// <summary>Delay between streamed words, to simulate a model typing. 0 disables it.</summary>
+    public int StreamDelayMs { get; set; } = 25;
 }
 
 public class AnthropicOptions

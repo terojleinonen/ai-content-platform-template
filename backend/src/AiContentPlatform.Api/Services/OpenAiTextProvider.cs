@@ -1,5 +1,8 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Net.ServerSentEvents;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using AiContentPlatform.Api.Dtos;
 using AiContentPlatform.Api.Options;
@@ -8,7 +11,7 @@ using Microsoft.Extensions.Options;
 namespace AiContentPlatform.Api.Services;
 
 /// <summary>
-/// Text generation via the OpenAI Chat Completions API. Also works with OpenAI-compatible
+/// Text generation via the streaming OpenAI Chat Completions API. Also works with OpenAI-compatible
 /// endpoints (Azure OpenAI proxies, local servers) by changing Ai:OpenAI:BaseUrl.
 /// </summary>
 public class OpenAiTextProvider : ITextGenerationProvider
@@ -24,15 +27,39 @@ public class OpenAiTextProvider : ITextGenerationProvider
 
     public string Name => AiProviderNames.OpenAI;
 
-    public async Task<GeneratedText> GenerateAsync(GenerateContentRequest request, CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<string> StreamAsync(GenerateContentRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         var payload = new ChatRequest(_options.Model,
         [
             new ChatMessage("system", ContentPrompt.SystemPrompt),
             new ChatMessage("user", ContentPrompt.BuildUserPrompt(request))
-        ]);
+        ], Stream: true);
 
-        using var message = new HttpRequestMessage(HttpMethod.Post, "v1/chat/completions")
+        using var response = await SendAsync(payload, cancellationToken);
+        await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
+
+        await foreach (var item in SseParser.Create(stream).EnumerateAsync(cancellationToken))
+        {
+            if (string.IsNullOrWhiteSpace(item.Data)) continue;
+            if (item.Data == "[DONE]") yield break;
+
+            var chunk = JsonSerializer.Deserialize<ChatChunk>(item.Data);
+            if (chunk?.Error is { } error)
+            {
+                throw new AiProviderException(Name, error.Message ?? "Stream error.");
+            }
+
+            var text = chunk?.Choices?.FirstOrDefault()?.Delta?.Content;
+            if (!string.IsNullOrEmpty(text))
+            {
+                yield return text;
+            }
+        }
+    }
+
+    private async Task<HttpResponseMessage> SendAsync(ChatRequest payload, CancellationToken cancellationToken)
+    {
+        var message = new HttpRequestMessage(HttpMethod.Post, "v1/chat/completions")
         {
             Content = JsonContent.Create(payload)
         };
@@ -41,41 +68,37 @@ public class OpenAiTextProvider : ITextGenerationProvider
         HttpResponseMessage response;
         try
         {
-            response = await _http.SendAsync(message, cancellationToken);
+            response = await _http.SendAsync(message, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
         }
         catch (HttpRequestException ex)
         {
             throw new AiProviderException(Name, "Could not reach the API.", ex);
         }
 
-        using (response)
+        if (!response.IsSuccessStatusCode)
         {
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = await response.Content.ReadAsStringAsync(cancellationToken);
-                throw new AiProviderException(Name, $"HTTP {(int)response.StatusCode}: {(error.Length > 500 ? error[..500] + "…" : error)}");
-            }
-
-            var result = await response.Content.ReadFromJsonAsync<ChatResponse>(cancellationToken);
-            var text = result?.Choices?.FirstOrDefault()?.Message?.Content;
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                throw new AiProviderException(Name, "Empty response.");
-            }
-
-            return ContentPrompt.Parse(text, request);
+            var error = await response.Content.ReadAsStringAsync(cancellationToken);
+            response.Dispose();
+            throw new AiProviderException(Name, $"HTTP {(int)response.StatusCode}: {(error.Length > 500 ? error[..500] + "…" : error)}");
         }
+
+        return response;
     }
 
     private record ChatRequest(
         [property: JsonPropertyName("model")] string Model,
-        [property: JsonPropertyName("messages")] ChatMessage[] Messages);
+        [property: JsonPropertyName("messages")] ChatMessage[] Messages,
+        [property: JsonPropertyName("stream")] bool Stream);
 
     private record ChatMessage(
         [property: JsonPropertyName("role")] string Role,
         [property: JsonPropertyName("content")] string? Content);
 
-    private record ChatResponse([property: JsonPropertyName("choices")] Choice[]? Choices);
+    private record ChatChunk(
+        [property: JsonPropertyName("choices")] Choice[]? Choices,
+        [property: JsonPropertyName("error")] ChunkError? Error);
 
-    private record Choice([property: JsonPropertyName("message")] ChatMessage? Message);
+    private record Choice([property: JsonPropertyName("delta")] ChatMessage? Delta);
+
+    private record ChunkError([property: JsonPropertyName("message")] string? Message);
 }

@@ -1,3 +1,4 @@
+using System.Text;
 using AiContentPlatform.Api.Dtos;
 
 namespace AiContentPlatform.Api.Services;
@@ -17,10 +18,30 @@ public class AiTextService : IAiTextService
         _seo = seo;
     }
 
+    public string ProviderName => _provider.Name;
+
     public async Task<GenerateContentResponse> GenerateContentAsync(GenerateContentRequest request, CancellationToken cancellationToken = default)
     {
-        var generated = await _provider.GenerateAsync(request, cancellationToken);
+        var output = new StringBuilder();
+        await foreach (var chunk in _provider.StreamAsync(request, cancellationToken))
+        {
+            output.Append(chunk);
+        }
 
+        if (string.IsNullOrWhiteSpace(output.ToString()))
+        {
+            throw new AiProviderException(_provider.Name, "Empty response.");
+        }
+
+        return BuildResponse(request, output.ToString());
+    }
+
+    public IAsyncEnumerable<string> StreamContentAsync(GenerateContentRequest request, CancellationToken cancellationToken = default) =>
+        _provider.StreamAsync(request, cancellationToken);
+
+    public GenerateContentResponse BuildResponse(GenerateContentRequest request, string output)
+    {
+        var generated = ContentPrompt.Parse(output, request);
         var keywords = (request.Keywords ?? Array.Empty<string>())
             .Where(k => !string.IsNullOrWhiteSpace(k))
             .Select(k => k.Trim())

@@ -17,6 +17,18 @@ interface ProblemDetails {
   errors?: Record<string, string[]>
 }
 
+async function errorMessage(res: Response): Promise<string> {
+  let message = `${res.status} ${res.statusText}`
+  try {
+    const problem = (await res.json()) as ProblemDetails
+    if (problem.errors) message = Object.values(problem.errors).flat().join(' ')
+    else message = problem.detail ?? problem.title ?? message
+  } catch {
+    // Non-JSON error body; keep the status text.
+  }
+  return message
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response
   try {
@@ -29,19 +41,61 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     throw new Error('Cannot reach the API. Is the backend running on http://localhost:5080?')
   }
 
-  if (!res.ok) {
-    let message = `${res.status} ${res.statusText}`
-    try {
-      const problem = (await res.json()) as ProblemDetails
-      if (problem.errors) message = Object.values(problem.errors).flat().join(' ')
-      else message = problem.detail ?? problem.title ?? message
-    } catch {
-      // Non-JSON error body; keep the status text.
-    }
-    throw new Error(message)
-  }
+  if (!res.ok) throw new Error(await errorMessage(res))
 
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T)
+}
+
+/**
+ * Streams content generation via Server-Sent Events. Calls `onDelta` with each Markdown chunk
+ * and resolves with the final response (title, body, SEO). Abort with `signal` to stop generation.
+ */
+async function generateContentStream(
+  req: GenerateContentRequest,
+  onDelta: (text: string) => void,
+  signal?: AbortSignal,
+): Promise<GenerateContentResponse> {
+  let res: Response
+  try {
+    res = await fetch(BASE + '/api/content/generate/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify(req),
+      signal,
+    })
+  } catch (err) {
+    if (signal?.aborted) throw err
+    throw new Error('Cannot reach the API. Is the backend running on http://localhost:5080?')
+  }
+  if (!res.ok || !res.body) throw new Error(await errorMessage(res))
+
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader()
+  let buffer = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += value
+
+    // Events are separated by a blank line; keep any trailing partial event in the buffer.
+    const events = buffer.split(/\r?\n\r?\n/)
+    buffer = events.pop() ?? ''
+
+    for (const raw of events) {
+      let type = 'message'
+      const data: string[] = []
+      for (const line of raw.split(/\r?\n/)) {
+        if (line.startsWith('event:')) type = line.slice(6).trim()
+        else if (line.startsWith('data:')) data.push(line.slice(5).trimStart())
+      }
+      if (!data.length) continue
+      const payload = JSON.parse(data.join('\n'))
+
+      if (type === 'delta') onDelta(payload.text)
+      else if (type === 'done') return payload as GenerateContentResponse
+      else if (type === 'error') throw new Error(payload.message)
+    }
+  }
+  throw new Error('The stream ended unexpectedly.')
 }
 
 export const api = {
@@ -49,6 +103,7 @@ export const api = {
 
   generateContent: (req: GenerateContentRequest) =>
     request<GenerateContentResponse>('POST', '/api/content/generate', req),
+  generateContentStream,
   generateImage: (req: GenerateImageRequest) =>
     request<GenerateImageResponse>('POST', '/api/image/generate', req),
 

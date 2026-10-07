@@ -1,18 +1,49 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using AiContentPlatform.Api.Domain;
 using AiContentPlatform.Api.Dtos;
+using AiContentPlatform.Api.Options;
+using Microsoft.Extensions.Options;
 
 namespace AiContentPlatform.Api.Services;
 
 /// <summary>
 /// Offline, template-based generator so the demo works without any API key.
-/// Output is deterministic and structured like real model output (Markdown, keywords woven in).
+/// Output is deterministic and structured like real model output (Markdown, keywords woven in),
+/// and is streamed word by word to simulate a model typing.
 /// </summary>
-public class MockTextProvider : ITextGenerationProvider
+public partial class MockTextProvider : ITextGenerationProvider
 {
+    private readonly int _streamDelayMs;
+
+    public MockTextProvider(IOptions<AiOptions> options)
+    {
+        _streamDelayMs = options.Value.Mock.StreamDelayMs;
+    }
+
     public string Name => AiProviderNames.Mock;
 
-    public Task<GeneratedText> GenerateAsync(GenerateContentRequest request, CancellationToken cancellationToken = default)
+    // Words with their trailing whitespace, so chunks concatenate back to the original text.
+    [GeneratedRegex(@"\S+\s*|\s+")]
+    private static partial Regex ChunkRegex();
+
+    public async IAsyncEnumerable<string> StreamAsync(GenerateContentRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    {
+        var generated = Generate(request);
+        var markdown = $"# {generated.Title}\n\n{generated.Body}";
+
+        foreach (Match chunk in ChunkRegex().Matches(markdown))
+        {
+            if (_streamDelayMs > 0)
+            {
+                await Task.Delay(_streamDelayMs, cancellationToken);
+            }
+            yield return chunk.Value;
+        }
+    }
+
+    internal static GeneratedText Generate(GenerateContentRequest request)
     {
         var topic = request.Prompt.Trim().TrimEnd('.', '!', '?');
         var title = string.IsNullOrWhiteSpace(request.Title) ? MakeTitle(topic, request.Type) : request.Title.Trim();
@@ -86,7 +117,7 @@ public class MockTextProvider : ITextGenerationProvider
             body += $"\n\n_(Mock provider writes English only — configure a real AI provider for {request.Language.Trim()}.)_";
         }
 
-        return Task.FromResult(new GeneratedText(title, body.Trim()));
+        return new GeneratedText(title, body.Trim());
     }
 
     private static string MakeTitle(string topic, ContentType type)

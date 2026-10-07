@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
 import { api, parseKeywords } from '../api'
 import { Markdown } from '../components/Markdown'
 import { SeoPanel } from '../components/SeoPanel'
@@ -12,6 +12,18 @@ const EXAMPLES = [
   { prompt: 'Announce our spring sale: 25% off all plants this weekend', type: 'SocialPost', keywords: 'spring sale, plants' },
 ] as const
 
+type Result = GenerateContentResponse & { stopped?: boolean }
+
+/** Splits streamed Markdown into the "# Title" first line and the body, like the API does. */
+function splitTitle(markdown: string) {
+  const text = markdown.trimStart()
+  if (!text.startsWith('# ')) return { title: '', body: text }
+  const newline = text.indexOf('\n')
+  return newline < 0
+    ? { title: text.slice(2).trim(), body: '' }
+    : { title: text.slice(2, newline).trim(), body: text.slice(newline + 1).trim() }
+}
+
 export function WritePage() {
   const [type, setType] = useState<ContentType>('BlogPost')
   const [prompt, setPrompt] = useState('')
@@ -23,8 +35,10 @@ export function WritePage() {
 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string>()
-  const [result, setResult] = useState<GenerateContentResponse>()
+  const [result, setResult] = useState<Result>()
+  const [streamText, setStreamText] = useState<string>()
   const [editing, setEditing] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
 
   const [projects, setProjects] = useState<Project[]>([])
   const [projectId, setProjectId] = useState('')
@@ -37,29 +51,68 @@ export function WritePage() {
     }, () => {})
   }, [])
 
+  // Cancel an in-flight generation when leaving the page.
+  useEffect(() => () => abortRef.current?.abort(), [])
+
   async function generate(e: FormEvent) {
     e.preventDefault()
+    if (abortRef.current) return
     setLoading(true)
     setError(undefined)
     setSaveState(undefined)
+    setResult(undefined)
+    setEditing(false)
+    setStreamText('')
+
+    const controller = new AbortController()
+    abortRef.current = controller
+    let text = ''
     try {
-      const res = await api.generateContent({
-        prompt,
-        type,
-        title: title || undefined,
-        targetAudience: audience || undefined,
-        toneOfVoice: tone || undefined,
-        language: language || undefined,
-        keywords: parseKeywords(keywords),
-      })
+      const res = await api.generateContentStream(
+        {
+          prompt,
+          type,
+          title: title || undefined,
+          targetAudience: audience || undefined,
+          toneOfVoice: tone || undefined,
+          language: language || undefined,
+          keywords: parseKeywords(keywords),
+        },
+        (chunk) => {
+          text += chunk
+          setStreamText(text)
+        },
+        controller.signal,
+      )
       setResult(res)
-      setEditing(false)
     } catch (err) {
-      setError((err as Error).message)
+      if (controller.signal.aborted && text.trim()) {
+        // Keep what was written so far; it can still be edited and saved.
+        const partial = splitTitle(text)
+        setResult({
+          title: partial.title || title || 'Untitled',
+          body: partial.body,
+          wordCount: partial.body.split(/\s+/).filter(Boolean).length,
+          provider: '',
+          stopped: true,
+        })
+      } else if (!controller.signal.aborted) {
+        setError((err as Error).message)
+      }
     } finally {
+      abortRef.current = null
+      setStreamText(undefined)
       setLoading(false)
     }
   }
+
+  const stop = (e: MouseEvent) => {
+    // Aborting re-renders this spot as the "Generate" submit button before the click finishes;
+    // without preventDefault the same click would submit the form and start a new generation.
+    e.preventDefault()
+    abortRef.current?.abort()
+  }
+  const live = streamText !== undefined ? splitTitle(streamText) : undefined
 
   async function save() {
     if (!result || !projectId) return
@@ -159,14 +212,34 @@ export function WritePage() {
           </label>
         </div>
 
-        <button className="primary" disabled={loading || !prompt.trim()}>
-          {loading ? <span className="spinner" /> : '✨'} {loading ? 'Generating…' : 'Generate content'}
-        </button>
+        {loading ? (
+          <button key="stop" type="button" className="primary stop" onClick={stop}>
+            <span className="spinner" /> Stop generating
+          </button>
+        ) : (
+          <button key="generate" className="primary" disabled={!prompt.trim()}>
+            ✨ Generate content
+          </button>
+        )}
         {error && <p className="error">{error}</p>}
       </form>
 
       <section className="card result">
-        {!result ? (
+        {live ? (
+          <>
+            <div className="result-toolbar">
+              <span className="pill neutral">Writing…</span>
+              <div className="spacer" />
+              <button type="button" className="ghost" onClick={stop}>
+                ■ Stop
+              </button>
+            </div>
+            <article className="streaming">
+              {live.title && <h1 className="result-title">{live.title}</h1>}
+              {live.body ? <Markdown text={live.body} /> : <span className="cursor" />}
+            </article>
+          </>
+        ) : !result ? (
           <div className="empty">
             <div className="empty-icon">✍️</div>
             <p>Fill in the brief and hit <strong>Generate</strong>.</p>
@@ -175,7 +248,11 @@ export function WritePage() {
         ) : (
           <>
             <div className="result-toolbar">
-              <span className="pill neutral">via {result.provider}</span>
+              {result.stopped ? (
+                <span className="pill warn">Stopped early</span>
+              ) : (
+                <span className="pill neutral">via {result.provider}</span>
+              )}
               <div className="spacer" />
               <button type="button" className="ghost" onClick={() => setEditing(!editing)}>
                 {editing ? 'Preview' : 'Edit'}
@@ -197,7 +274,11 @@ export function WritePage() {
               </article>
             )}
 
-            <SeoPanel wordCount={result.wordCount} scores={result.keywordScores} />
+            {result.stopped ? (
+              <p className="muted small">Generation was stopped, so SEO analysis isn’t available. You can still edit and save the text.</p>
+            ) : (
+              <SeoPanel wordCount={result.wordCount} scores={result.keywordScores} />
+            )}
 
             <div className="save-bar">
               <select value={projectId} onChange={(e) => setProjectId(e.target.value)} disabled={!projects.length}>
