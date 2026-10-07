@@ -1,0 +1,17 @@
+name: Code of conduct – private contact request
+description: Ask the maintainer for a private way to report a code-of-conduct concern
+title: "Code of conduct: private contact request"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is **public**. Don't describe the incident or name anyone here: just submit it,
+        and the maintainer will reply with a private way to share your report.
+        See the [Code of Conduct](https://github.com/terojleinonen/ai-content-platform-template/blob/main/CODE_OF_CONDUCT.md).
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: Confirmation
+      options:
+        - label: I haven't included any details of the incident in this issue.
+          required: true
