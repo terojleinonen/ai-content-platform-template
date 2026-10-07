@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations;
 using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -45,12 +46,54 @@ public class ContentController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public IResult GenerateStream([FromBody] GenerateContentRequest request, CancellationToken cancellationToken) =>
-        TypedResults.ServerSentEvents(StreamEvents(request, cancellationToken));
+        TypedResults.ServerSentEvents(StreamEvents(
+            _aiTextService.StreamContentAsync(request, cancellationToken),
+            output => _aiTextService.BuildResponse(output, request.Title, request.Keywords),
+            cancellationToken));
 
-    private async IAsyncEnumerable<SseItem<string>> StreamEvents(GenerateContentRequest request, [EnumeratorCancellation] CancellationToken cancellationToken)
+    /// <summary>Generates several alternative versions of the same brief (2–4) in parallel, each from a different angle.</summary>
+    [HttpPost("variants")]
+    [ProducesResponseType<IReadOnlyList<GenerateContentResponse>>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    public async Task<ActionResult<IReadOnlyList<GenerateContentResponse>>> Variants(
+        [FromBody] GenerateContentRequest request,
+        CancellationToken cancellationToken,
+        [FromQuery, Range(2, 4)] int count = 3)
+    {
+        var results = await _aiTextService.GenerateVariantsAsync(request, count, cancellationToken);
+        return Ok(results);
+    }
+
+    /// <summary>Rewrites existing content: improve, shorten, expand, change tone, translate or a custom instruction.</summary>
+    [HttpPost("transform")]
+    [ProducesResponseType<GenerateContentResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status502BadGateway)]
+    public async Task<ActionResult<GenerateContentResponse>> Transform([FromBody] TransformContentRequest request, CancellationToken cancellationToken)
+    {
+        var result = await _aiTextService.TransformContentAsync(request, cancellationToken);
+        return Ok(result);
+    }
+
+    /// <summary>Streams a rewrite as Server-Sent Events, with the same events as <c>generate/stream</c>.</summary>
+    [HttpPost("transform/stream")]
+    [Produces("text/event-stream")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public IResult TransformStream([FromBody] TransformContentRequest request, CancellationToken cancellationToken) =>
+        TypedResults.ServerSentEvents(StreamEvents(
+            _aiTextService.StreamTransformAsync(request, cancellationToken),
+            output => _aiTextService.BuildResponse(output, request.Title, request.Keywords),
+            cancellationToken));
+
+    private async IAsyncEnumerable<SseItem<string>> StreamEvents(
+        IAsyncEnumerable<string> source,
+        Func<string, GenerateContentResponse> buildResponse,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var output = new StringBuilder();
-        await using var chunks = _aiTextService.StreamContentAsync(request, cancellationToken).GetAsyncEnumerator(cancellationToken);
+        await using var chunks = source.GetAsyncEnumerator(cancellationToken);
 
         while (true)
         {
@@ -82,7 +125,7 @@ public class ContentController : ControllerBase
             yield break;
         }
 
-        yield return Event("done", _aiTextService.BuildResponse(request, output.ToString()));
+        yield return Event("done", buildResponse(output.ToString()));
     }
 
     // Data is serialized here so it is always single-line JSON, whatever the payload type.

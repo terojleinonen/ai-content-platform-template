@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using AiContentPlatform.Api.Domain;
 
 namespace AiContentPlatform.Api.Dtos;
@@ -25,4 +26,23 @@ public class GenerateContentRequest
 
     [MaxLength(10)]
     public string[]? Keywords { get; set; }
+
+    /// <summary>
+    /// 1-based variant number when generating several alternatives; 0 for a single generation.
+    /// Set by the server, not by clients.
+    /// </summary>
+    [JsonIgnore]
+    public int Variant { get; set; }
+
+    public GenerateContentRequest AsVariant(int variant) => new()
+    {
+        Prompt = Prompt,
+        Type = Type,
+        Title = Title,
+        TargetAudience = TargetAudience,
+        ToneOfVoice = ToneOfVoice,
+        Language = Language,
+        Keywords = Keywords,
+        Variant = variant
+    };
 }

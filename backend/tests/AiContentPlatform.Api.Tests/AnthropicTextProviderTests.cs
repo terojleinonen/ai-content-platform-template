@@ -42,7 +42,7 @@ public class AnthropicTextProviderTests
         var handler = new StubHandler(HttpStatusCode.OK, Stream, "text/event-stream");
         var provider = CreateProvider(handler);
 
-        var chunks = await provider.StreamAsync(new GenerateContentRequest { Prompt = "Say hello" }, TestContext.Current.CancellationToken)
+        var chunks = await provider.StreamContentAsync(new GenerateContentRequest { Prompt = "Say hello" }, TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(["# Hello", "\n\nWorld body."], chunks);
@@ -71,7 +71,7 @@ public class AnthropicTextProviderTests
         var provider = CreateProvider(new StubHandler(HttpStatusCode.OK, errorStream, "text/event-stream"));
 
         var ex = await Assert.ThrowsAsync<AiProviderException>(() =>
-            provider.StreamAsync(new GenerateContentRequest { Prompt = "x" }, TestContext.Current.CancellationToken)
+            provider.StreamContentAsync(new GenerateContentRequest { Prompt = "x" }, TestContext.Current.CancellationToken)
                 .ToListAsync(TestContext.Current.CancellationToken));
 
         Assert.Contains("Overloaded", ex.Message);
@@ -83,7 +83,7 @@ public class AnthropicTextProviderTests
         var provider = CreateProvider(new StubHandler(HttpStatusCode.Unauthorized, """{"error":"invalid x-api-key"}"""));
 
         var ex = await Assert.ThrowsAsync<AiProviderException>(() =>
-            provider.StreamAsync(new GenerateContentRequest { Prompt = "x" }, TestContext.Current.CancellationToken)
+            provider.StreamContentAsync(new GenerateContentRequest { Prompt = "x" }, TestContext.Current.CancellationToken)
                 .ToListAsync(TestContext.Current.CancellationToken));
 
         Assert.Contains("401", ex.Message);

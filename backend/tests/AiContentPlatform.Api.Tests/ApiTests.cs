@@ -112,6 +112,73 @@ public class ApiTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task Variants_ReturnsRequestedNumberOfDistinctVersions()
+    {
+        var response = await _client.PostAsJsonAsync("/api/content/variants?count=3",
+            new GenerateContentRequest { Prompt = "coffee tips", Type = ContentType.BlogPost }, Json, Ct);
+
+        response.EnsureSuccessStatusCode();
+        var variants = (await response.Content.ReadFromJsonAsync<List<GenerateContentResponse>>(Json, Ct))!;
+        Assert.Equal(3, variants.Count);
+        Assert.Equal(3, variants.Select(v => v.Title).Distinct().Count());
+    }
+
+    [Fact]
+    public async Task Variants_WithCountOutOfRange_Returns400()
+    {
+        var response = await _client.PostAsJsonAsync("/api/content/variants?count=9", new GenerateContentRequest { Prompt = "x" }, Json, Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Transform_ReturnsRewrittenContentWithSeo()
+    {
+        var response = await _client.PostAsJsonAsync("/api/content/transform", new TransformContentRequest
+        {
+            Action = TransformAction.Expand,
+            Title = "Coffee",
+            Body = "Coffee is great. Brew it fresh.",
+            Keywords = ["coffee"]
+        }, Json, Ct);
+
+        response.EnsureSuccessStatusCode();
+        var result = (await response.Content.ReadFromJsonAsync<GenerateContentResponse>(Json, Ct))!;
+        Assert.Equal("Coffee", result.Title);
+        Assert.True(result.WordCount > 6);
+        Assert.True(result.KeywordScores!["coffee"] > 0);
+    }
+
+    [Fact]
+    public async Task TransformStream_StreamsDeltasThenDone()
+    {
+        var response = await _client.PostAsJsonAsync("/api/content/transform/stream", new TransformContentRequest
+        {
+            Action = TransformAction.Shorten,
+            Title = "Coffee",
+            Body = "Coffee is great. Brew it fresh."
+        }, Json, Ct);
+
+        response.EnsureSuccessStatusCode();
+        var body = await response.Content.ReadAsStringAsync(Ct);
+        Assert.Contains("event: delta", body);
+        Assert.Contains("event: done", body);
+        Assert.Contains("\"body\":\"Coffee is great.\"", body);
+    }
+
+    [Theory]
+    [InlineData("ChangeTone", "ToneOfVoice")]
+    [InlineData("Translate", "Language")]
+    [InlineData("Custom", "Instruction")]
+    public async Task Transform_WithoutRequiredOption_Returns400(string action, string missingField)
+    {
+        var response = await _client.PostAsJsonAsync("/api/content/transform", new { action, body = "Text" }, Ct);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Contains(missingField, await response.Content.ReadAsStringAsync(Ct));
+    }
+
+    [Fact]
     public async Task GenerateContent_WithoutPrompt_Returns400()
     {
         var response = await _client.PostAsJsonAsync("/api/content/generate", new { prompt = "" }, Ct);

@@ -1,10 +1,19 @@
 import { useEffect, useRef, useState, type FormEvent, type MouseEvent } from 'react'
 import { api, parseKeywords } from '../api'
+import { AiTools, TRANSFORM_LABELS, type TransformOptions } from '../components/AiTools'
 import { Markdown } from '../components/Markdown'
 import { SeoPanel } from '../components/SeoPanel'
-import { CONTENT_TYPES, CONTENT_TYPE_LABELS, type ContentType, type GenerateContentResponse, type Project } from '../types'
-
-const TONES = ['', 'Friendly', 'Professional', 'Playful', 'Persuasive']
+import { useContentStream } from '../hooks/useContentStream'
+import {
+  CONTENT_TYPES,
+  CONTENT_TYPE_LABELS,
+  TONES,
+  type ContentType,
+  type GenerateContentRequest,
+  type GenerateContentResponse,
+  type Project,
+  type TransformAction,
+} from '../types'
 
 const EXAMPLES = [
   { prompt: 'How small bakeries can use Instagram to attract local customers', type: 'BlogPost', keywords: 'bakery marketing, instagram' },
@@ -12,17 +21,11 @@ const EXAMPLES = [
   { prompt: 'Announce our spring sale: 25% off all plants this weekend', type: 'SocialPost', keywords: 'spring sale, plants' },
 ] as const
 
+const VARIANT_COUNT = 3
+
 type Result = GenerateContentResponse & { stopped?: boolean }
 
-/** Splits streamed Markdown into the "# Title" first line and the body, like the API does. */
-function splitTitle(markdown: string) {
-  const text = markdown.trimStart()
-  if (!text.startsWith('# ')) return { title: '', body: text }
-  const newline = text.indexOf('\n')
-  return newline < 0
-    ? { title: text.slice(2).trim(), body: '' }
-    : { title: text.slice(2, newline).trim(), body: text.slice(newline + 1).trim() }
-}
+const snippet = (body: string) => body.replace(/[#*_]/g, '').replace(/\s+/g, ' ').trim().slice(0, 220)
 
 export function WritePage() {
   const [type, setType] = useState<ContentType>('BlogPost')
@@ -33,16 +36,23 @@ export function WritePage() {
   const [language, setLanguage] = useState('English')
   const [keywords, setKeywords] = useState('')
 
-  const [loading, setLoading] = useState(false)
+  const stream = useContentStream()
+  const [streamLabel, setStreamLabel] = useState('Writing…')
   const [error, setError] = useState<string>()
+  const [notice, setNotice] = useState<string>()
   const [result, setResult] = useState<Result>()
-  const [streamText, setStreamText] = useState<string>()
+  const [history, setHistory] = useState<Result[]>([])
   const [editing, setEditing] = useState(false)
-  const abortRef = useRef<AbortController | null>(null)
+
+  const [variants, setVariants] = useState<GenerateContentResponse[]>()
+  const [variantsLoading, setVariantsLoading] = useState(false)
+  const variantsAbort = useRef<AbortController | null>(null)
 
   const [projects, setProjects] = useState<Project[]>([])
   const [projectId, setProjectId] = useState('')
   const [saveState, setSaveState] = useState<string>()
+
+  const busy = stream.running || variantsLoading
 
   useEffect(() => {
     api.listProjects().then((p) => {
@@ -51,68 +61,110 @@ export function WritePage() {
     }, () => {})
   }, [])
 
-  // Cancel an in-flight generation when leaving the page.
-  useEffect(() => () => abortRef.current?.abort(), [])
+  useEffect(() => () => variantsAbort.current?.abort(), [])
+
+  const brief = (): GenerateContentRequest => ({
+    prompt,
+    type,
+    title: title || undefined,
+    targetAudience: audience || undefined,
+    toneOfVoice: tone || undefined,
+    language: language || undefined,
+    keywords: parseKeywords(keywords),
+  })
+
+  function resetOutput() {
+    setError(undefined)
+    setNotice(undefined)
+    setSaveState(undefined)
+    setResult(undefined)
+    setHistory([])
+    setVariants(undefined)
+    setEditing(false)
+  }
 
   async function generate(e: FormEvent) {
     e.preventDefault()
-    if (abortRef.current) return
-    setLoading(true)
-    setError(undefined)
-    setSaveState(undefined)
-    setResult(undefined)
-    setEditing(false)
-    setStreamText('')
+    if (busy) return
+    resetOutput()
+    setStreamLabel('Writing…')
 
-    const controller = new AbortController()
-    abortRef.current = controller
-    let text = ''
-    try {
-      const res = await api.generateContentStream(
-        {
-          prompt,
-          type,
-          title: title || undefined,
-          targetAudience: audience || undefined,
-          toneOfVoice: tone || undefined,
-          language: language || undefined,
-          keywords: parseKeywords(keywords),
-        },
-        (chunk) => {
-          text += chunk
-          setStreamText(text)
-        },
-        controller.signal,
-      )
-      setResult(res)
-    } catch (err) {
-      if (controller.signal.aborted && text.trim()) {
-        // Keep what was written so far; it can still be edited and saved.
-        const partial = splitTitle(text)
-        setResult({
-          title: partial.title || title || 'Untitled',
-          body: partial.body,
-          wordCount: partial.body.split(/\s+/).filter(Boolean).length,
-          provider: '',
-          stopped: true,
-        })
-      } else if (!controller.signal.aborted) {
-        setError((err as Error).message)
-      }
-    } finally {
-      abortRef.current = null
-      setStreamText(undefined)
-      setLoading(false)
+    const outcome = await stream.run((onDelta, signal) => api.generateContentStream(brief(), onDelta, signal))
+    if (outcome?.kind === 'done') {
+      setResult(outcome.result)
+    } else if (outcome?.kind === 'stopped' && outcome.partial.body) {
+      // Keep what was written so far; it can still be edited and saved.
+      setResult({
+        title: outcome.partial.title || title || 'Untitled',
+        body: outcome.partial.body,
+        wordCount: outcome.partial.body.split(/\s+/).filter(Boolean).length,
+        provider: '',
+        stopped: true,
+      })
+    } else if (outcome?.kind === 'error') {
+      setError(outcome.message)
     }
   }
 
-  const stop = (e: MouseEvent) => {
-    // Aborting re-renders this spot as the "Generate" submit button before the click finishes;
-    // without preventDefault the same click would submit the form and start a new generation.
-    e.preventDefault()
-    abortRef.current?.abort()
+  async function generateVariants() {
+    if (busy || !prompt.trim()) return
+    resetOutput()
+    const controller = new AbortController()
+    variantsAbort.current = controller
+    setVariantsLoading(true)
+    try {
+      setVariants(await api.generateVariants(brief(), VARIANT_COUNT, controller.signal))
+    } catch (err) {
+      if (!controller.signal.aborted) setError((err as Error).message)
+    } finally {
+      variantsAbort.current = null
+      setVariantsLoading(false)
+    }
   }
-  const live = streamText !== undefined ? splitTitle(streamText) : undefined
+
+  function chooseVariant(variant: GenerateContentResponse) {
+    setResult(variant)
+    setVariants(undefined)
+  }
+
+  async function runTool(action: TransformAction, options?: TransformOptions) {
+    if (!result || busy) return
+    const before = result
+    setEditing(false)
+    setError(undefined)
+    setNotice(undefined)
+    setSaveState(undefined)
+    setStreamLabel(`${TRANSFORM_LABELS[action]}…`)
+
+    const outcome = await stream.run((onDelta, signal) =>
+      api.transformContentStream(
+        { action, title: before.title, body: before.body, type, keywords: parseKeywords(keywords), ...options },
+        onDelta,
+        signal,
+      ),
+    )
+    if (outcome?.kind === 'done') {
+      setHistory((h) => [...h, before])
+      setResult(outcome.result)
+    } else if (outcome?.kind === 'stopped') {
+      setNotice('Edit stopped. Your text is unchanged.')
+    } else if (outcome?.kind === 'error') {
+      setError(outcome.message)
+    }
+  }
+
+  function undo() {
+    const previous = history[history.length - 1]
+    if (!previous) return
+    setHistory(history.slice(0, -1))
+    setResult(previous)
+    setNotice(undefined)
+  }
+
+  function stop(e?: MouseEvent) {
+    stream.stop(e)
+    variantsAbort.current?.abort()
+  }
 
   async function save() {
     if (!result || !projectId) return
@@ -190,10 +242,9 @@ export function WritePage() {
           <label>
             Tone of voice
             <select value={tone} onChange={(e) => setTone(e.target.value)}>
+              <option value="">Neutral</option>
               {TONES.map((t) => (
-                <option key={t} value={t}>
-                  {t || 'Neutral'}
-                </option>
+                <option key={t}>{t}</option>
               ))}
             </select>
           </label>
@@ -212,38 +263,80 @@ export function WritePage() {
           </label>
         </div>
 
-        {loading ? (
-          <button key="stop" type="button" className="primary stop" onClick={stop}>
-            <span className="spinner" /> Stop generating
-          </button>
-        ) : (
-          <button key="generate" className="primary" disabled={!prompt.trim()}>
-            ✨ Generate content
-          </button>
-        )}
+        <div className="form-actions">
+          {busy ? (
+            <button key="stop" type="button" className="primary stop" onClick={stop}>
+              <span className="spinner" /> Stop
+            </button>
+          ) : (
+            <>
+              <button key="generate" className="primary" disabled={!prompt.trim()}>
+                ✨ Generate content
+              </button>
+              <button type="button" className="ghost" disabled={!prompt.trim()} onClick={generateVariants}>
+                Generate {VARIANT_COUNT} variants to compare
+              </button>
+            </>
+          )}
+        </div>
         {error && <p className="error">{error}</p>}
       </form>
 
       <section className="card result">
-        {live ? (
+        {stream.live ? (
           <>
             <div className="result-toolbar">
-              <span className="pill neutral">Writing…</span>
+              <span className="pill neutral">{streamLabel}</span>
               <div className="spacer" />
               <button type="button" className="ghost" onClick={stop}>
                 ■ Stop
               </button>
             </div>
             <article className="streaming">
-              {live.title && <h1 className="result-title">{live.title}</h1>}
-              {live.body ? <Markdown text={live.body} /> : <span className="cursor" />}
+              {stream.live.title && <h1 className="result-title">{stream.live.title}</h1>}
+              {stream.live.body ? <Markdown text={stream.live.body} /> : <span className="cursor" />}
             </article>
+          </>
+        ) : variantsLoading ? (
+          <div className="empty">
+            <div className="empty-icon">
+              <span className="spinner large" />
+            </div>
+            <p>Writing {VARIANT_COUNT} variants in parallel…</p>
+            <p className="muted small">Each takes a different angle. This can take as long as a single long generation.</p>
+          </div>
+        ) : variants ? (
+          <>
+            <div className="result-toolbar">
+              <h2 className="no-margin">Pick a variant</h2>
+              <div className="spacer" />
+              <span className="pill neutral">via {variants[0]?.provider}</span>
+            </div>
+            <ul className="variants">
+              {variants.map((v, i) => (
+                <li key={i} className="variant">
+                  <span className="muted small">Variant {i + 1}</span>
+                  <h3>{v.title}</h3>
+                  <p className="muted small snippet">{snippet(v.body)}…</p>
+                  <div className="variant-meta">
+                    <span className="muted small">{v.wordCount} words</span>
+                    <button type="button" className="primary" onClick={() => chooseVariant(v)}>
+                      Use this
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
           </>
         ) : !result ? (
           <div className="empty">
             <div className="empty-icon">✍️</div>
-            <p>Fill in the brief and hit <strong>Generate</strong>.</p>
-            <p className="muted small">Generated content appears here with SEO insights. You can edit it and save it to a project.</p>
+            <p>
+              Fill in the brief and hit <strong>Generate</strong>.
+            </p>
+            <p className="muted small">
+              Generated content appears here with SEO insights. Refine it with AI tools, edit it and save it to a project.
+            </p>
           </div>
         ) : (
           <>
@@ -254,6 +347,11 @@ export function WritePage() {
                 <span className="pill neutral">via {result.provider}</span>
               )}
               <div className="spacer" />
+              {history.length > 0 && (
+                <button type="button" className="ghost" onClick={undo} title="Undo the last AI edit">
+                  ↶ Undo
+                </button>
+              )}
               <button type="button" className="ghost" onClick={() => setEditing(!editing)}>
                 {editing ? 'Preview' : 'Edit'}
               </button>
@@ -273,6 +371,9 @@ export function WritePage() {
                 <Markdown text={result.body} />
               </article>
             )}
+
+            <AiTools disabled={busy} onRun={runTool} />
+            {notice && <p className="notice">{notice}</p>}
 
             {result.stopped ? (
               <p className="muted small">Generation was stopped, so SEO analysis isn’t available. You can still edit and save the text.</p>

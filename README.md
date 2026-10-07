@@ -11,6 +11,9 @@ real AI output as soon as you provide an Anthropic or OpenAI key.
 - **Write** – generate blog posts, product descriptions, social posts and emails from a brief
   (audience, tone, language, SEO keywords). Text streams in live as the model writes it, and can be
   stopped at any time; edit the result and save it to a project.
+- **Variants** – write 3 versions of the same brief in parallel, each from a different angle, and pick one.
+- **AI editing tools** – Improve, Shorten, Expand, Change tone, Translate, or a custom instruction
+  ("add a call to action"), on fresh results (with undo) and on saved content (review, then save or cancel).
 - **SEO insights** – word count and keyword density per keyword (multi-word phrases supported),
   rated *missing / low / good / too high*.
 - **Projects** – organize saved content; view, edit and delete items (SQLite via EF Core).
@@ -90,13 +93,16 @@ Provider errors are returned as HTTP 502 `ProblemDetails` and shown in the UI.
 | GET | `/api/health` | Status and active AI providers |
 | POST | `/api/content/generate` | Generate content + SEO scores |
 | POST | `/api/content/generate/stream` | Same, streamed as Server-Sent Events (see below) |
+| POST | `/api/content/variants?count=3` | Generate 2–4 alternative versions in parallel |
+| POST | `/api/content/transform` | Rewrite content: `Improve`, `Shorten`, `Expand`, `ChangeTone`, `Translate`, `Custom` |
+| POST | `/api/content/transform/stream` | Same, streamed as Server-Sent Events |
 | POST | `/api/image/generate` | Generate an image (URL or `data:` URI) |
 | GET/POST | `/api/projects` | List / create projects |
 | GET/PUT/DELETE | `/api/projects/{id}` | Get / rename / delete a project |
 | GET/POST | `/api/projects/{id}/content` | List / add content items |
 | GET/PUT/DELETE | `/api/content-items/{id}` | Get / update / delete a content item |
 
-The streaming endpoint sends `delta` events with `{"text": "..."}` Markdown chunks as they are
+The streaming endpoints send `delta` events with `{"text": "..."}` Markdown chunks as they are
 written, then one `done` event with the full response (title, body, SEO). If the provider fails
 mid-stream it sends an `error` event with `{"message": "..."}`. Closing the connection cancels the
 upstream AI request.
@@ -131,9 +137,10 @@ Explore and try all endpoints with Swagger UI at http://localhost:5080/swagger (
 
 ### Adding another AI provider
 
-Implement `ITextGenerationProvider` (text) or `IAiImageService` (images), register it in
-`Program.cs`, and add it to `AiProviderSelector`. LLM providers can reuse
-`ContentPrompt.SystemPrompt`, `BuildUserPrompt` and `Parse`.
+For an LLM text provider, derive from `LlmTextProvider` and implement `StreamCompletionAsync`
+(system + user prompt in, streamed text out); prompts for generation and editing come from
+`ContentPrompt`. For images, implement `IAiImageService`. Then register it in `Program.cs` and add
+it to `AiProviderSelector`.
 
 ## Tests
 

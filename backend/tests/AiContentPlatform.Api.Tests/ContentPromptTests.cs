@@ -9,7 +9,7 @@ public class ContentPromptTests
     [Fact]
     public void Parse_SplitsHeadingIntoTitle()
     {
-        var result = ContentPrompt.Parse("# My Title\n\nFirst paragraph.\n\n## Section", new GenerateContentRequest());
+        var result = ContentPrompt.Parse("# My Title\n\nFirst paragraph.\n\n## Section", null);
 
         Assert.Equal("My Title", result.Title);
         Assert.Equal("First paragraph.\n\n## Section", result.Body);
@@ -18,7 +18,7 @@ public class ContentPromptTests
     [Fact]
     public void Parse_StripsCodeFences()
     {
-        var result = ContentPrompt.Parse("```markdown\n# Fenced\nBody\n```", new GenerateContentRequest());
+        var result = ContentPrompt.Parse("```markdown\n# Fenced\nBody\n```", null);
 
         Assert.Equal("Fenced", result.Title);
         Assert.Equal("Body", result.Body);
@@ -27,7 +27,7 @@ public class ContentPromptTests
     [Fact]
     public void Parse_FallsBackToRequestedTitle()
     {
-        var result = ContentPrompt.Parse("Just a body.", new GenerateContentRequest { Title = "Requested" });
+        var result = ContentPrompt.Parse("Just a body.", "Requested");
 
         Assert.Equal("Requested", result.Title);
         Assert.Equal("Just a body.", result.Body);
@@ -49,5 +49,39 @@ public class ContentPromptTests
         Assert.Contains("Tone of voice: Playful", prompt);
         Assert.Contains("SEO keywords: app, launch", prompt);
         Assert.DoesNotContain("Target audience", prompt);
+    }
+
+    [Fact]
+    public void BuildUserPrompt_AddsAngleOnlyForVariants()
+    {
+        var request = new GenerateContentRequest { Prompt = "x" };
+
+        Assert.DoesNotContain("Angle:", ContentPrompt.BuildUserPrompt(request));
+        Assert.NotEqual(
+            ContentPrompt.BuildUserPrompt(request.AsVariant(1)),
+            ContentPrompt.BuildUserPrompt(request.AsVariant(2)));
+    }
+
+    [Theory]
+    [InlineData(TransformAction.Shorten, "50% shorter")]
+    [InlineData(TransformAction.Translate, "into Finnish")]
+    [InlineData(TransformAction.ChangeTone, "Playful tone")]
+    [InlineData(TransformAction.Custom, "Add a call to action")]
+    public void BuildTransformPrompt_DescribesTaskAndWrapsContent(TransformAction action, string expected)
+    {
+        var prompt = ContentPrompt.BuildTransformPrompt(new TransformContentRequest
+        {
+            Action = action,
+            Title = "My title",
+            Body = "Original body.",
+            Language = "Finnish",
+            ToneOfVoice = "Playful",
+            Instruction = "Add a call to action",
+            Keywords = ["seo"]
+        });
+
+        Assert.Contains(expected, prompt);
+        Assert.Contains("SEO keywords to keep: seo", prompt);
+        Assert.Contains("<content>\n# My title\n\nOriginal body.\n</content>", prompt.ReplaceLineEndings("\n"));
     }
 }
