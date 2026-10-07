@@ -6,6 +6,9 @@ public class GenerateContentResponse
     public string Body { get; set; } = string.Empty;
     public string? SeoSummary { get; set; }
     public Dictionary<string, double>? KeywordScores { get; set; }
+
+    /// <summary>Keyword usage rated for the content's type and length (mentions or density).</summary>
+    public SeoReport? Seo { get; set; }
     public int WordCount { get; set; }
     public string Provider { get; set; } = string.Empty;
 

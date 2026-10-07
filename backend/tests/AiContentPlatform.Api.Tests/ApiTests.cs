@@ -104,6 +104,21 @@ public class ApiTests : IClassFixture<ApiFactory>
     }
 
     [Fact]
+    public async Task GenerateContentStream_DoneEventIncludesSeoReportWithStringMode()
+    {
+        var response = await _client.PostAsJsonAsync("/api/content/generate/stream", new GenerateContentRequest
+        {
+            Prompt = "coffee subscriptions",
+            Type = ContentType.SocialPost,
+            Keywords = ["coffee"]
+        }, Json, Ct);
+
+        var body = await response.Content.ReadAsStringAsync(Ct);
+        Assert.Contains("\"mode\":\"Mentions\"", body);
+        Assert.Contains("\"target\":\"Short text: mention each keyword once or twice.\"", body);
+    }
+
+    [Fact]
     public async Task GenerateContentStream_WithoutPrompt_Returns400()
     {
         var response = await _client.PostAsJsonAsync("/api/content/generate/stream", new { prompt = "" }, Ct);

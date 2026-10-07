@@ -27,6 +27,21 @@ export interface BrandVoice {
   avoidTerms: string[]
 }
 
+export interface KeywordInsight {
+  keyword: string
+  occurrences: number
+  density: number
+  rating: 'missing' | 'low' | 'good' | 'too high' | 'too many'
+}
+
+/** Keyword usage rated for the content's type and length: by mentions (short) or density (long). */
+export interface SeoReport {
+  mode: 'Density' | 'Mentions'
+  target: string
+  wordCount: number
+  keywords: KeywordInsight[]
+}
+
 export interface BrandCheck {
   projectName: string
   avoidTermsFound: string[]
@@ -50,6 +65,7 @@ export interface GenerateContentResponse {
   body: string
   seoSummary?: string
   keywordScores?: Record<string, number>
+  seo?: SeoReport | null
   wordCount: number
   provider: string
   brandCheck?: BrandCheck | null

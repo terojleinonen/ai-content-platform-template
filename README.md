@@ -14,8 +14,9 @@ real AI output as soon as you provide an Anthropic or OpenAI key.
 - **Variants** – write 3 versions of the same brief in parallel, each from a different angle, and pick one.
 - **AI editing tools** – Improve, Shorten, Expand, Change tone, Translate, or a custom instruction
   ("add a call to action"), on fresh results (with undo) and on saved content (review, then save or cancel).
-- **SEO insights** – word count and keyword density per keyword (multi-word phrases supported),
-  rated *missing / low / good / too high*. Inflected forms count: Finnish case endings and consonant
+- **SEO insights** – keyword usage rated for the content's type and length: short text (social
+  posts, under 80 words) by mentions (1–2 is good), product descriptions and medium text by
+  density 0.5–5%, long text by density 0.5–3%. Multi-word phrases supported. Inflected forms count: Finnish case endings and consonant
   gradation (*Helsinki → Helsingissä*, *kauppa → kaupassa*) and English plurals.
 - **Multilingual keywords** – when content is written in, translated to, or edited in another
   language, keywords and brand terms are first translated to match (one small AI call, cached).

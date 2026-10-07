@@ -81,27 +81,28 @@ public class AiTextService : IAiTextService
 
     public GenerateContentResponse BuildResponse(string output, GenerateContentRequest request) =>
         BuildResponse(output, request.Title, request.Keywords, request.Brand, request.TermTranslations,
-            Languages.Parse(request.Language));
+            Languages.Parse(request.Language), request.Type);
 
     public GenerateContentResponse BuildResponse(string output, TransformContentRequest request) =>
         BuildResponse(output, request.Title, request.Keywords, request.Brand, request.TermTranslations,
-            request.Action == TransformAction.Translate ? Languages.Parse(request.Language) : TextLanguage.Auto);
+            request.Action == TransformAction.Translate ? Languages.Parse(request.Language) : TextLanguage.Auto, request.Type);
 
     private GenerateContentResponse BuildResponse(
         string output, string? fallbackTitle, IEnumerable<string>? keywords, BrandContext? brand,
-        Dictionary<string, string>? translations, TextLanguage requestedLanguage)
+        Dictionary<string, string>? translations, TextLanguage requestedLanguage, ContentType type)
     {
         var generated = ContentPrompt.Parse(output, fallbackTitle);
         var language = requestedLanguage == TextLanguage.Finnish ? TextLanguage.Finnish : Languages.Detect(generated.Body);
-        var cleanKeywords = CleanTerms(keywords);
+        var seo = _seo.Analyze(generated.Body, CleanTerms(keywords), type, language);
 
         return new GenerateContentResponse
         {
             Title = generated.Title,
             Body = generated.Body,
-            SeoSummary = _seo.BuildSeoSummary(generated.Body, cleanKeywords, language),
-            KeywordScores = _seo.ScoreKeywords(generated.Body, cleanKeywords, language),
-            WordCount = _seo.CountWords(generated.Body),
+            SeoSummary = seo.Summary,
+            KeywordScores = seo.Keywords.ToDictionary(k => k.Keyword, k => k.Density, StringComparer.OrdinalIgnoreCase),
+            Seo = seo,
+            WordCount = seo.WordCount,
             Provider = _provider.Name,
             BrandCheck = CheckBrand(generated, brand, language),
             TermTranslations = translations is { Count: > 0 } ? translations : null

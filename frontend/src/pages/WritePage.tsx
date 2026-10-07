@@ -418,10 +418,10 @@ export function WritePage() {
             <AiTools disabled={busy} onRun={runTool} />
             {notice && <p className="notice">{notice}</p>}
 
-            {result.stopped ? (
+            {result.stopped || !result.seo ? (
               <p className="muted small">Generation was stopped, so SEO analysis isn’t available. You can still edit and save the text.</p>
             ) : (
-              <SeoPanel wordCount={result.wordCount} scores={result.keywordScores} translations={result.termTranslations} />
+              <SeoPanel report={result.seo} translations={result.termTranslations} />
             )}
             {result.brandCheck && <BrandCheckPanel check={result.brandCheck} translations={result.termTranslations} />}
 
