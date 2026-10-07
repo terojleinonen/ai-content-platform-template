@@ -49,7 +49,7 @@ public interface ITextGenerationProvider
     IAsyncEnumerable<string> StreamTransformAsync(TransformContentRequest request, CancellationToken cancellationToken = default);
 
     /// <summary>Translates short terms (keywords, brand terms) into a language; same order and count.</summary>
-    Task<IReadOnlyList<string>> TranslateTermsAsync(IReadOnlyList<string> terms, string language, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<string>> TranslateTermsAsync(IReadOnlyList<string> terms, string language, UsageMeter usage, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -60,23 +60,24 @@ public abstract class LlmTextProvider : ITextGenerationProvider
     public abstract string Name { get; }
 
     public IAsyncEnumerable<string> StreamContentAsync(GenerateContentRequest request, CancellationToken cancellationToken = default) =>
-        StreamCompletionAsync(ContentPrompt.SystemPrompt, ContentPrompt.BuildUserPrompt(request), cancellationToken);
+        StreamCompletionAsync(ContentPrompt.SystemPrompt, ContentPrompt.BuildUserPrompt(request), request.Usage, cancellationToken);
 
     public IAsyncEnumerable<string> StreamTransformAsync(TransformContentRequest request, CancellationToken cancellationToken = default) =>
-        StreamCompletionAsync(ContentPrompt.EditSystemPrompt, ContentPrompt.BuildTransformPrompt(request), cancellationToken);
+        StreamCompletionAsync(ContentPrompt.EditSystemPrompt, ContentPrompt.BuildTransformPrompt(request), request.Usage, cancellationToken);
 
-    public async Task<IReadOnlyList<string>> TranslateTermsAsync(IReadOnlyList<string> terms, string language, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<string>> TranslateTermsAsync(IReadOnlyList<string> terms, string language, UsageMeter usage, CancellationToken cancellationToken = default)
     {
         var output = new StringBuilder();
         await foreach (var chunk in StreamCompletionAsync(
-            ContentPrompt.TermTranslationSystemPrompt, ContentPrompt.BuildTermTranslationPrompt(terms, language), cancellationToken))
+            ContentPrompt.TermTranslationSystemPrompt, ContentPrompt.BuildTermTranslationPrompt(terms, language), usage, cancellationToken))
         {
             output.Append(chunk);
         }
         return ContentPrompt.ParseTermList(output.ToString(), terms);
     }
 
-    protected abstract IAsyncEnumerable<string> StreamCompletionAsync(string systemPrompt, string userPrompt, CancellationToken cancellationToken);
+    /// <summary>Streams the completion text and records reported token usage in <paramref name="usage"/>.</summary>
+    protected abstract IAsyncEnumerable<string> StreamCompletionAsync(string systemPrompt, string userPrompt, UsageMeter usage, CancellationToken cancellationToken);
 }
 
 public record GeneratedText(string Title, string Body);

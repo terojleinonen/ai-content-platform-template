@@ -1,3 +1,5 @@
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
 using AiContentPlatform.Api.Domain;
 using AiContentPlatform.Api.Dtos;
@@ -16,13 +18,15 @@ public class AiTextService : IAiTextService
     private readonly ITextGenerationProvider _provider;
     private readonly ISeoScoringService _seo;
     private readonly IMemoryCache _cache;
+    private readonly IUsageRecorder _usage;
     private readonly ILogger<AiTextService> _logger;
 
-    public AiTextService(ITextGenerationProvider provider, ISeoScoringService seo, IMemoryCache cache, ILogger<AiTextService> logger)
+    public AiTextService(ITextGenerationProvider provider, ISeoScoringService seo, IMemoryCache cache, IUsageRecorder usage, ILogger<AiTextService> logger)
     {
         _provider = provider;
         _seo = seo;
         _cache = cache;
+        _usage = usage;
         _logger = logger;
     }
 
@@ -31,29 +35,38 @@ public class AiTextService : IAiTextService
     public async Task<GenerateContentResponse> GenerateContentAsync(GenerateContentRequest request, CancellationToken cancellationToken = default)
     {
         await LocalizeTermsAsync(request, cancellationToken);
-        return BuildResponse(await CollectAsync(_provider.StreamContentAsync(request, cancellationToken)), request);
+        return BuildResponse(await CollectAsync(StreamContentAsync(request, cancellationToken)), request);
     }
 
     public IAsyncEnumerable<string> StreamContentAsync(GenerateContentRequest request, CancellationToken cancellationToken = default) =>
-        _provider.StreamContentAsync(request, cancellationToken);
+        Metered(_provider.StreamContentAsync(request, cancellationToken), request.Usage,
+            request.Variant > 0
+                ? new UsageContext(AiOperation.Variant, $"{request.Variant}", request.ProjectId)
+                : new UsageContext(AiOperation.Generate, null, request.ProjectId),
+            cancellationToken);
 
     public async Task<IReadOnlyList<GenerateContentResponse>> GenerateVariantsAsync(GenerateContentRequest request, int count, CancellationToken cancellationToken = default)
     {
         // Localize once so all variants share the same translated terms.
         await LocalizeTermsAsync(request, cancellationToken);
         var tasks = Enumerable.Range(1, count).Select(async i =>
-            BuildResponse(await CollectAsync(_provider.StreamContentAsync(request.AsVariant(i), cancellationToken)), request));
+        {
+            var variant = request.AsVariant(i);
+            return BuildResponse(await CollectAsync(StreamContentAsync(variant, cancellationToken)), variant);
+        });
         return await Task.WhenAll(tasks);
     }
 
     public async Task<GenerateContentResponse> TransformContentAsync(TransformContentRequest request, CancellationToken cancellationToken = default)
     {
         await LocalizeTermsAsync(request, cancellationToken);
-        return BuildResponse(await CollectAsync(_provider.StreamTransformAsync(request, cancellationToken)), request);
+        return BuildResponse(await CollectAsync(StreamTransformAsync(request, cancellationToken)), request);
     }
 
     public IAsyncEnumerable<string> StreamTransformAsync(TransformContentRequest request, CancellationToken cancellationToken = default) =>
-        _provider.StreamTransformAsync(request, cancellationToken);
+        Metered(_provider.StreamTransformAsync(request, cancellationToken), request.Usage,
+            new UsageContext(AiOperation.Transform, request.Action.ToString(), request.ProjectId),
+            cancellationToken);
 
     public async Task LocalizeTermsAsync(GenerateContentRequest request, CancellationToken cancellationToken = default)
     {
@@ -62,7 +75,7 @@ public class AiTextService : IAiTextService
 
         var language = Languages.IsEnglishOrUnspecified(request.Language) ? null : request.Language!.Trim();
         (request.Keywords, request.Brand, request.TermTranslations) =
-            await LocalizeAsync(request.Keywords, request.Brand, language, cancellationToken);
+            await LocalizeAsync(request.Keywords, request.Brand, language, request.ProjectId, cancellationToken);
     }
 
     public async Task LocalizeTermsAsync(TransformContentRequest request, CancellationToken cancellationToken = default)
@@ -76,20 +89,20 @@ public class AiTextService : IAiTextService
             ? request.Language!.Trim()
             : Languages.Detect(request.Body) == TextLanguage.Finnish ? "Finnish" : null;
         (request.Keywords, request.Brand, request.TermTranslations) =
-            await LocalizeAsync(request.Keywords, request.Brand, language, cancellationToken);
+            await LocalizeAsync(request.Keywords, request.Brand, language, request.ProjectId, cancellationToken);
     }
 
     public GenerateContentResponse BuildResponse(string output, GenerateContentRequest request) =>
         BuildResponse(output, request.Title, request.Keywords, request.Brand, request.TermTranslations,
-            Languages.Parse(request.Language), request.Type);
+            Languages.Parse(request.Language), request.Type, request.Usage);
 
     public GenerateContentResponse BuildResponse(string output, TransformContentRequest request) =>
         BuildResponse(output, request.Title, request.Keywords, request.Brand, request.TermTranslations,
-            request.Action == TransformAction.Translate ? Languages.Parse(request.Language) : TextLanguage.Auto, request.Type);
+            request.Action == TransformAction.Translate ? Languages.Parse(request.Language) : TextLanguage.Auto, request.Type, request.Usage);
 
     private GenerateContentResponse BuildResponse(
         string output, string? fallbackTitle, IEnumerable<string>? keywords, BrandContext? brand,
-        Dictionary<string, string>? translations, TextLanguage requestedLanguage, ContentType type)
+        Dictionary<string, string>? translations, TextLanguage requestedLanguage, ContentType type, UsageMeter usage)
     {
         var generated = ContentPrompt.Parse(output, fallbackTitle);
         var language = requestedLanguage == TextLanguage.Finnish ? TextLanguage.Finnish : Languages.Detect(generated.Body);
@@ -105,8 +118,43 @@ public class AiTextService : IAiTextService
             WordCount = seo.WordCount,
             Provider = _provider.Name,
             BrandCheck = CheckBrand(generated, brand, language),
-            TermTranslations = translations is { Count: > 0 } ? translations : null
+            TermTranslations = translations is { Count: > 0 } ? translations : null,
+            Usage = usage.Model is null ? null
+                : new AiUsageSummary(usage.Model, usage.InputTokens, usage.OutputTokens, _usage.PriceOf(usage), usage.Estimated)
         };
+    }
+
+    /// <summary>
+    /// Passes a provider stream through and records the call when it ends: completed, failed, or
+    /// cancelled (e.g. the user pressed Stop). Interrupted streams end before the provider reports
+    /// the final output count, so it is estimated from the text received (a lower bound: tokens
+    /// spent thinking before the stop aren't visible).
+    /// </summary>
+    private async IAsyncEnumerable<string> Metered(
+        IAsyncEnumerable<string> source, UsageMeter meter, UsageContext context, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        var status = AiCallStatus.Failed;
+        var characters = 0;
+        try
+        {
+            await foreach (var chunk in source.WithCancellation(cancellationToken))
+            {
+                characters += chunk.Length;
+                yield return chunk;
+            }
+            status = AiCallStatus.Succeeded;
+        }
+        finally
+        {
+            if (status != AiCallStatus.Succeeded && cancellationToken.IsCancellationRequested) status = AiCallStatus.Cancelled;
+            if (!meter.OutputFinal)
+            {
+                meter.OutputTokens = Math.Max(meter.OutputTokens, UsageMeter.EstimateTokens(characters));
+                meter.Estimated = true;
+            }
+            await _usage.RecordAsync(context, _provider.Name, meter, stopwatch.Elapsed, status);
+        }
     }
 
     /// <summary>
@@ -115,7 +163,7 @@ public class AiTextService : IAiTextService
     /// terms are kept in both languages, so neither version slips through.
     /// </summary>
     private async Task<(string[]? Keywords, BrandContext? Brand, Dictionary<string, string>? Translations)> LocalizeAsync(
-        string[]? keywords, BrandContext? brand, string? language, CancellationToken cancellationToken)
+        string[]? keywords, BrandContext? brand, string? language, Guid? projectId, CancellationToken cancellationToken)
     {
         var cleanKeywords = CleanTerms(keywords);
         var terms = cleanKeywords
@@ -125,7 +173,7 @@ public class AiTextService : IAiTextService
             .ToList();
         if (language is null || terms.Count == 0) return (keywords, brand, null);
 
-        var map = await TranslateTermsAsync(terms, language, cancellationToken);
+        var map = await TranslateTermsAsync(terms, language, projectId, cancellationToken);
         string Translate(string term) => map.GetValueOrDefault(term, term);
 
         var localizedBrand = brand is null ? null : brand with
@@ -150,7 +198,7 @@ public class AiTextService : IAiTextService
     /// Translates terms, using cached translations where possible. Never fails the generation:
     /// on provider errors the original terms are used.
     /// </summary>
-    private async Task<Dictionary<string, string>> TranslateTermsAsync(List<string> terms, string language, CancellationToken cancellationToken)
+    private async Task<Dictionary<string, string>> TranslateTermsAsync(List<string> terms, string language, Guid? projectId, CancellationToken cancellationToken)
     {
         var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var missing = new List<string>();
@@ -164,7 +212,10 @@ public class AiTextService : IAiTextService
 
         try
         {
-            var translated = await _provider.TranslateTermsAsync(missing, language, cancellationToken);
+            var meter = new UsageMeter();
+            var translated = await _usage.TrackAsync(
+                new UsageContext(AiOperation.TermTranslation, language, projectId), _provider.Name, meter,
+                () => _provider.TranslateTermsAsync(missing, language, meter, cancellationToken));
             for (var i = 0; i < missing.Count; i++)
             {
                 map[missing[i]] = translated[i];

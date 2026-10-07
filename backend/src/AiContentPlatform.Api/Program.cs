@@ -21,8 +21,9 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p => p
     .AllowAnyHeader()
     .AllowAnyMethod()));
 
-// Persistence (SQLite file, created and seeded on startup)
-builder.Services.AddDbContext<AppDbContext>(o =>
+// Persistence (SQLite file, migrated and seeded on startup). The factory also registers a scoped
+// AppDbContext; background-safe code (usage recording, parallel variants) creates its own contexts.
+builder.Services.AddDbContextFactory<AppDbContext>(o =>
     o.UseSqlite(builder.Configuration.GetConnectionString("Default")));
 
 // AI configuration. Standard ANTHROPIC_API_KEY / OPENAI_API_KEY env vars are honoured as fallbacks.
@@ -66,6 +67,7 @@ builder.Services.AddTransient<IAiImageService>(sp =>
 // Application services
 builder.Services.AddTransient<IAiTextService, AiTextService>();
 builder.Services.AddSingleton<ISeoScoringService, SeoScoringService>();
+builder.Services.AddSingleton<IUsageRecorder, UsageRecorder>();
 
 var app = builder.Build();
 

@@ -20,4 +20,10 @@ public class GenerateContentResponse
     /// when it differs from the language they were given in. Scores above use the translations.
     /// </summary>
     public Dictionary<string, string>? TermTranslations { get; set; }
+
+    /// <summary>Tokens and estimated cost of the main AI call (term translation is recorded separately).</summary>
+    public AiUsageSummary? Usage { get; set; }
 }
+
+public record AiUsageSummary(string Model, int InputTokens, int OutputTokens, double? CostUsd, bool Estimated);
+

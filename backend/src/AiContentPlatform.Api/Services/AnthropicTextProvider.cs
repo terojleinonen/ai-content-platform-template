@@ -24,7 +24,7 @@ public class AnthropicTextProvider : LlmTextProvider
 
     public override string Name => AiProviderNames.Anthropic;
 
-    protected override async IAsyncEnumerable<string> StreamCompletionAsync(string systemPrompt, string userPrompt, [EnumeratorCancellation] CancellationToken cancellationToken)
+    protected override async IAsyncEnumerable<string> StreamCompletionAsync(string systemPrompt, string userPrompt, UsageMeter usage, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var payload = new MessagesRequest(
             _options.Model,
@@ -33,6 +33,7 @@ public class AnthropicTextProvider : LlmTextProvider
             [new Message("user", userPrompt)],
             Stream: true);
 
+        usage.Model = _options.Model;
         using var response = await SendAsync(payload, cancellationToken);
         await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
 
@@ -43,6 +44,17 @@ public class AnthropicTextProvider : LlmTextProvider
             var streamEvent = JsonSerializer.Deserialize<StreamEvent>(item.Data);
             switch (streamEvent?.Type)
             {
+                // Input (and cache) tokens arrive up front, the final output count with message_delta.
+                case "message_start" when streamEvent.Message?.Usage is { } start:
+                    usage.InputTokens = start.InputTokens;
+                    usage.CacheWriteTokens = start.CacheCreationInputTokens ?? 0;
+                    usage.CacheReadTokens = start.CacheReadInputTokens ?? 0;
+                    usage.OutputTokens = start.OutputTokens ?? 0;
+                    break;
+                case "message_delta" when streamEvent.Usage?.OutputTokens is { } outputTokens:
+                    usage.OutputTokens = outputTokens;
+                    usage.OutputFinal = true;
+                    break;
                 case "content_block_delta" when streamEvent.Delta?.Type == "text_delta" && !string.IsNullOrEmpty(streamEvent.Delta.Text):
                     yield return streamEvent.Delta.Text;
                     break;
@@ -97,7 +109,17 @@ public class AnthropicTextProvider : LlmTextProvider
     private record StreamEvent(
         [property: JsonPropertyName("type")] string Type,
         [property: JsonPropertyName("delta")] Delta? Delta,
-        [property: JsonPropertyName("error")] StreamError? Error);
+        [property: JsonPropertyName("error")] StreamError? Error,
+        [property: JsonPropertyName("message")] StartMessage? Message,
+        [property: JsonPropertyName("usage")] Usage? Usage);
+
+    private record StartMessage([property: JsonPropertyName("usage")] Usage? Usage);
+
+    private record Usage(
+        [property: JsonPropertyName("input_tokens")] int InputTokens,
+        [property: JsonPropertyName("output_tokens")] int? OutputTokens,
+        [property: JsonPropertyName("cache_creation_input_tokens")] int? CacheCreationInputTokens,
+        [property: JsonPropertyName("cache_read_input_tokens")] int? CacheReadInputTokens);
 
     private record Delta(
         [property: JsonPropertyName("type")] string? Type,

@@ -45,6 +45,10 @@ public class GenerateContentRequest
     [JsonIgnore]
     public bool TermsLocalized { get; set; }
 
+    /// <summary>Token usage of the main AI call for this request, filled in by the provider.</summary>
+    [JsonIgnore]
+    public UsageMeter Usage { get; } = new();
+
     /// <summary>
     /// 1-based variant number when generating several alternatives; 0 for a single generation.
     /// Set by the server, not by clients.

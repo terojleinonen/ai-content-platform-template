@@ -27,6 +27,10 @@ real AI output as soon as you provide an Anthropic or OpenAI key.
   **brand check** flags banned terms in the output and shows which preferred terms were used.
 - **Projects** – organize saved content; view, edit and delete items (SQLite via EF Core).
 - **Images** – generate images from a prompt with style and format options.
+- **Usage & cost** – every AI call (generation, variants, edits, term translations, images) is
+  recorded with tokens, estimated cost, duration and outcome, including calls stopped mid-stream.
+  The Usage page shows totals, a daily chart and breakdowns by operation, project and model; each
+  result also shows its own tokens and cost.
 - **Pluggable AI providers**
 
   | Capability | Mock (default) | Anthropic (Claude) | OpenAI |
@@ -100,6 +104,7 @@ Other settings (in `appsettings.json`, overridable via env vars like `Ai__Anthro
 | `Ai:Anthropic:MaxTokens` | `2048` |
 | `Ai:OpenAI:Model` / `ImageModel` | `gpt-4.1-mini` / `gpt-image-1` |
 | `Ai:OpenAI:BaseUrl` | `https://api.openai.com/` (point at any OpenAI-compatible endpoint) |
+| `Ai:Pricing:<model>` | USD per million input/output tokens, used for cost estimates (Claude models preconfigured) |
 | `ConnectionStrings:Default` | `Data Source=ai-content-platform.db` |
 
 Provider errors are returned as HTTP 502 `ProblemDetails` and shown in the UI.
@@ -118,6 +123,7 @@ Provider errors are returned as HTTP 502 `ProblemDetails` and shown in the UI.
 | GET/POST | `/api/projects` | List / create projects |
 | GET/PUT/DELETE | `/api/projects/{id}` | Get / rename / delete a project |
 | PUT | `/api/projects/{id}/brand-voice` | Set the project's brand voice (all-empty fields remove it) |
+| GET | `/api/usage?days=30` | AI usage and estimated cost: totals, per day, per operation/project/model, recent calls |
 | GET/POST | `/api/projects/{id}/content` | List / add content items |
 | GET/PUT/DELETE | `/api/content-items/{id}` | Get / update / delete a content item |
 
@@ -175,7 +181,7 @@ SQLite database with the mock providers; the Anthropic client is tested against 
 - Authentication & authorization (ASP.NET Core Identity / JWT / OIDC); projects are currently
   owned by a seeded demo user.
 - PostgreSQL instead of SQLite (migrations are already in place).
-- Streaming generation, rate limiting, usage metering and billing.
+- Rate limiting and billing on top of the usage records.
 - Persist generated images to blob storage instead of returning `data:` URIs.
 - Docker images and deployment pipeline.
 
