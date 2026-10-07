@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { api, parseKeywords } from '../api'
+import { AiTools, TRANSFORM_LABELS, type TransformOptions } from '../components/AiTools'
 import { Markdown } from '../components/Markdown'
-import { CONTENT_TYPES, CONTENT_TYPE_LABELS, type ContentItem, type ContentType, type Project } from '../types'
+import { useContentStream } from '../hooks/useContentStream'
+import { CONTENT_TYPES, CONTENT_TYPE_LABELS, type ContentItem, type ContentType, type Project, type TransformAction } from '../types'
 
 export function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
@@ -157,6 +159,43 @@ function ContentEditor({
   const [body, setBody] = useState(item.body)
   const [keywords, setKeywords] = useState(item.keywords.join(', '))
   const [error, setError] = useState<string>()
+  const [notice, setNotice] = useState<string>()
+  const [streamLabel, setStreamLabel] = useState('')
+  const stream = useContentStream()
+
+  function resetFields() {
+    setType(item.type)
+    setTitle(item.title)
+    setBody(item.body)
+    setKeywords(item.keywords.join(', '))
+  }
+
+  function cancel() {
+    resetFields()
+    setEditing(false)
+    setNotice(undefined)
+    setError(undefined)
+  }
+
+  async function runTool(action: TransformAction, options?: TransformOptions) {
+    setError(undefined)
+    setNotice(undefined)
+    setStreamLabel(`${TRANSFORM_LABELS[action]}…`)
+    setEditing(true)
+
+    const outcome = await stream.run((onDelta, signal) =>
+      api.transformContentStream({ action, title, body, type, keywords: parseKeywords(keywords), ...options }, onDelta, signal),
+    )
+    if (outcome?.kind === 'done') {
+      setTitle(outcome.result.title)
+      setBody(outcome.result.body)
+      setNotice('AI edit applied. Review it, then Save, or Cancel to discard.')
+    } else if (outcome?.kind === 'stopped') {
+      setNotice('Edit stopped. The text is unchanged.')
+    } else if (outcome?.kind === 'error') {
+      setError(outcome.message)
+    }
+  }
 
   async function save() {
     try {
@@ -169,6 +208,7 @@ function ContentEditor({
         keywords: parseKeywords(keywords),
       })
       setEditing(false)
+      setNotice(undefined)
       onSaved(saved)
     } catch (err) {
       setError((err as Error).message)
@@ -188,9 +228,16 @@ function ContentEditor({
           ← Back
         </button>
         <div className="spacer" />
-        {editing ? (
+        {stream.running ? (
           <>
-            <button className="ghost" onClick={() => setEditing(false)}>
+            <span className="pill neutral">{streamLabel}</span>
+            <button className="ghost" onClick={stream.stop}>
+              ■ Stop
+            </button>
+          </>
+        ) : editing ? (
+          <>
+            <button className="ghost" onClick={cancel}>
               Cancel
             </button>
             <button className="primary" onClick={save}>
@@ -227,8 +274,15 @@ function ContentEditor({
               <input value={keywords} onChange={(e) => setKeywords(e.target.value)} />
             </label>
           </div>
-          <input className="title-input" value={title} onChange={(e) => setTitle(e.target.value)} />
-          <textarea rows={18} value={body} onChange={(e) => setBody(e.target.value)} />
+          <input
+            className="title-input"
+            value={stream.live ? stream.live.title : title}
+            onChange={(e) => setTitle(e.target.value)}
+            readOnly={stream.running}
+          />
+          <textarea rows={18} value={stream.live ? stream.live.body : body} onChange={(e) => setBody(e.target.value)} readOnly={stream.running} />
+          <AiTools disabled={stream.running} onRun={runTool} />
+          {notice && <p className="notice">{notice}</p>}
           {error && <p className="error">{error}</p>}
         </div>
       ) : (
@@ -244,6 +298,7 @@ function ContentEditor({
           </div>
           <h1 className="result-title">{item.title}</h1>
           <Markdown text={item.body} />
+          <AiTools onRun={runTool} />
         </article>
       )}
     </div>

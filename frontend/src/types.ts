@@ -9,6 +9,9 @@ export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
   Custom: 'Custom',
 }
 
+export const TONES = ['Friendly', 'Professional', 'Playful', 'Persuasive'] as const
+export const LANGUAGES = ['English', 'Finnish', 'Swedish', 'German', 'French', 'Spanish'] as const
+
 export interface Health {
   status: string
   textProvider: string
@@ -33,6 +36,20 @@ export interface GenerateContentResponse {
   keywordScores?: Record<string, number>
   wordCount: number
   provider: string
+}
+
+export const TRANSFORM_ACTIONS = ['Improve', 'Shorten', 'Expand', 'ChangeTone', 'Translate', 'Custom'] as const
+export type TransformAction = (typeof TRANSFORM_ACTIONS)[number]
+
+export interface TransformContentRequest {
+  action: TransformAction
+  title?: string
+  body: string
+  type?: ContentType
+  toneOfVoice?: string
+  language?: string
+  instruction?: string
+  keywords?: string[]
 }
 
 export interface GenerateImageRequest {

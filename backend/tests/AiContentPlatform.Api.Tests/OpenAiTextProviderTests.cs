@@ -28,7 +28,7 @@ public class OpenAiTextProviderTests
         var options = Microsoft.Extensions.Options.Options.Create(new AiOptions { OpenAI = { ApiKey = "k", Model = "m" } });
         var provider = new OpenAiTextProvider(new HttpClient(handler) { BaseAddress = new Uri("https://api.test/") }, options);
 
-        var chunks = await provider.StreamAsync(new GenerateContentRequest { Prompt = "x" }, TestContext.Current.CancellationToken)
+        var chunks = await provider.StreamContentAsync(new GenerateContentRequest { Prompt = "x" }, TestContext.Current.CancellationToken)
             .ToListAsync(TestContext.Current.CancellationToken);
 
         Assert.Equal(["# Hi", "\n\nBody"], chunks);

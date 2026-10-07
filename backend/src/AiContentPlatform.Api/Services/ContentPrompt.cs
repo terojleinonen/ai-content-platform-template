@@ -17,6 +17,23 @@ public static class ContentPrompt
         Output only the content itself: no preamble, no notes, no code fences.
         """;
 
+    public const string EditSystemPrompt = """
+        You are an expert editor and SEO copywriter for a content marketing platform.
+        You revise existing content according to the editing task, preserving its facts and intent.
+        Never invent statistics, quotes or facts that aren't in the original.
+        Keep the requested SEO keywords in the text, used naturally.
+        Respond in Markdown with the complete revised piece. The first line MUST be the title as a
+        level-1 heading ("# Title"). Output only the content itself: no preamble, no notes, no code fences.
+        """;
+
+    // Distinct angles so parallel variants don't all come out the same.
+    private static readonly string[] VariantAngles =
+    [
+        "Take a direct, practical how-to angle.",
+        "Open with a short, relatable story or scenario.",
+        "Lead with a bold, surprising insight and a punchy title."
+    ];
+
     public static string BuildUserPrompt(GenerateContentRequest request)
     {
         var sb = new StringBuilder();
@@ -36,17 +53,56 @@ public static class ContentPrompt
         var keywords = request.Keywords?.Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => k.Trim()).ToArray();
         if (keywords is { Length: > 0 })
             sb.AppendLine($"SEO keywords: {string.Join(", ", keywords)}");
+        if (request.Variant > 0)
+            sb.AppendLine($"Angle: {VariantAngles[(request.Variant - 1) % VariantAngles.Length]}");
 
         return sb.ToString().TrimEnd();
     }
 
+    public static string BuildTransformPrompt(TransformContentRequest request)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"Editing task: {DescribeTask(request)}");
+        sb.AppendLine($"Content type: {Describe(request.Type)}");
+
+        var keywords = request.Keywords?.Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => k.Trim()).ToArray();
+        if (keywords is { Length: > 0 })
+            sb.AppendLine($"SEO keywords to keep: {string.Join(", ", keywords)}");
+
+        sb.AppendLine();
+        sb.AppendLine("Content to edit:");
+        sb.AppendLine("<content>");
+        if (!string.IsNullOrWhiteSpace(request.Title))
+            sb.AppendLine($"# {request.Title.Trim()}").AppendLine();
+        sb.AppendLine(request.Body.Trim());
+        sb.AppendLine("</content>");
+
+        return sb.ToString().TrimEnd();
+    }
+
+    private static string DescribeTask(TransformContentRequest request) => request.Action switch
+    {
+        TransformAction.Improve =>
+            "Improve clarity, flow and engagement, and fix grammar and awkward phrasing. Keep the meaning, structure, language and roughly the same length.",
+        TransformAction.Shorten =>
+            "Make it about 50% shorter. Keep the key points, the structure and the language.",
+        TransformAction.Expand =>
+            "Expand it by about 50% with more depth, explanation and concrete examples. Keep the structure and the language.",
+        TransformAction.ChangeTone =>
+            $"Rewrite it in a {request.ToneOfVoice!.Trim()} tone of voice. Keep the content, structure and language.",
+        TransformAction.Translate =>
+            $"Translate it, including the title, into {request.Language!.Trim()}. Adapt idioms naturally and keep the Markdown formatting.",
+        _ =>
+            $"Apply this instruction: {request.Instruction!.Trim()}"
+    };
+
     /// <summary>
     /// Splits the model output into a title (leading "# " heading) and body.
     /// </summary>
-    public static GeneratedText Parse(string output, GenerateContentRequest request)
+    public static GeneratedText Parse(string output, string? fallbackTitle)
     {
         var text = StripCodeFence(output.Trim());
-        var fallbackTitle = string.IsNullOrWhiteSpace(request.Title) ? "Untitled" : request.Title.Trim();
+        fallbackTitle = string.IsNullOrWhiteSpace(fallbackTitle) ? "Untitled" : fallbackTitle.Trim();
 
         var newline = text.IndexOf('\n');
         var firstLine = (newline < 0 ? text : text[..newline]).Trim();

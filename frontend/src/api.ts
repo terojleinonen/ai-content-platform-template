@@ -7,6 +7,7 @@ import type {
   Health,
   Project,
   SaveContentItem,
+  TransformContentRequest,
 } from './types'
 
 const BASE = import.meta.env.VITE_API_BASE ?? ''
@@ -29,15 +30,17 @@ async function errorMessage(res: Response): Promise<string> {
   return message
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+async function request<T>(method: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   let res: Response
   try {
     res = await fetch(BASE + path, {
       method,
       headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
+      signal,
     })
-  } catch {
+  } catch (err) {
+    if (signal?.aborted) throw err
     throw new Error('Cannot reach the API. Is the backend running on http://localhost:5080?')
   }
 
@@ -46,21 +49,24 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T)
 }
 
+export type OnDelta = (text: string) => void
+
 /**
- * Streams content generation via Server-Sent Events. Calls `onDelta` with each Markdown chunk
- * and resolves with the final response (title, body, SEO). Abort with `signal` to stop generation.
+ * POSTs to a streaming endpoint and reads its Server-Sent Events. Calls `onDelta` with each
+ * Markdown chunk and resolves with the final response (title, body, SEO). Abort with `signal` to stop.
  */
-async function generateContentStream(
-  req: GenerateContentRequest,
-  onDelta: (text: string) => void,
+async function streamContent(
+  path: string,
+  body: unknown,
+  onDelta: OnDelta,
   signal?: AbortSignal,
 ): Promise<GenerateContentResponse> {
   let res: Response
   try {
-    res = await fetch(BASE + '/api/content/generate/stream', {
+    res = await fetch(BASE + path, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-      body: JSON.stringify(req),
+      body: JSON.stringify(body),
       signal,
     })
   } catch (err) {
@@ -103,7 +109,12 @@ export const api = {
 
   generateContent: (req: GenerateContentRequest) =>
     request<GenerateContentResponse>('POST', '/api/content/generate', req),
-  generateContentStream,
+  generateContentStream: (req: GenerateContentRequest, onDelta: OnDelta, signal?: AbortSignal) =>
+    streamContent('/api/content/generate/stream', req, onDelta, signal),
+  generateVariants: (req: GenerateContentRequest, count: number, signal?: AbortSignal) =>
+    request<GenerateContentResponse[]>('POST', `/api/content/variants?count=${count}`, req, signal),
+  transformContentStream: (req: TransformContentRequest, onDelta: OnDelta, signal?: AbortSignal) =>
+    streamContent('/api/content/transform/stream', req, onDelta, signal),
   generateImage: (req: GenerateImageRequest) =>
     request<GenerateImageResponse>('POST', '/api/image/generate', req),
 

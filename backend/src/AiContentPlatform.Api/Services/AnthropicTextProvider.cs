@@ -3,7 +3,6 @@ using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using AiContentPlatform.Api.Dtos;
 using AiContentPlatform.Api.Options;
 using Microsoft.Extensions.Options;
 
@@ -12,7 +11,7 @@ namespace AiContentPlatform.Api.Services;
 /// <summary>
 /// Text generation via the streaming Anthropic Messages API (https://docs.anthropic.com/en/api/messages-streaming).
 /// </summary>
-public class AnthropicTextProvider : ITextGenerationProvider
+public class AnthropicTextProvider : LlmTextProvider
 {
     private readonly HttpClient _http;
     private readonly AnthropicOptions _options;
@@ -23,15 +22,15 @@ public class AnthropicTextProvider : ITextGenerationProvider
         _options = options.Value.Anthropic;
     }
 
-    public string Name => AiProviderNames.Anthropic;
+    public override string Name => AiProviderNames.Anthropic;
 
-    public async IAsyncEnumerable<string> StreamAsync(GenerateContentRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    protected override async IAsyncEnumerable<string> StreamCompletionAsync(string systemPrompt, string userPrompt, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var payload = new MessagesRequest(
             _options.Model,
             _options.MaxTokens,
-            ContentPrompt.SystemPrompt,
-            [new Message("user", ContentPrompt.BuildUserPrompt(request))],
+            systemPrompt,
+            [new Message("user", userPrompt)],
             Stream: true);
 
         using var response = await SendAsync(payload, cancellationToken);

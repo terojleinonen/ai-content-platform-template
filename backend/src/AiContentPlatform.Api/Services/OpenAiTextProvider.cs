@@ -4,7 +4,6 @@ using System.Net.ServerSentEvents;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using AiContentPlatform.Api.Dtos;
 using AiContentPlatform.Api.Options;
 using Microsoft.Extensions.Options;
 
@@ -14,7 +13,7 @@ namespace AiContentPlatform.Api.Services;
 /// Text generation via the streaming OpenAI Chat Completions API. Also works with OpenAI-compatible
 /// endpoints (Azure OpenAI proxies, local servers) by changing Ai:OpenAI:BaseUrl.
 /// </summary>
-public class OpenAiTextProvider : ITextGenerationProvider
+public class OpenAiTextProvider : LlmTextProvider
 {
     private readonly HttpClient _http;
     private readonly OpenAiOptions _options;
@@ -25,14 +24,14 @@ public class OpenAiTextProvider : ITextGenerationProvider
         _options = options.Value.OpenAI;
     }
 
-    public string Name => AiProviderNames.OpenAI;
+    public override string Name => AiProviderNames.OpenAI;
 
-    public async IAsyncEnumerable<string> StreamAsync(GenerateContentRequest request, [EnumeratorCancellation] CancellationToken cancellationToken = default)
+    protected override async IAsyncEnumerable<string> StreamCompletionAsync(string systemPrompt, string userPrompt, [EnumeratorCancellation] CancellationToken cancellationToken)
     {
         var payload = new ChatRequest(_options.Model,
         [
-            new ChatMessage("system", ContentPrompt.SystemPrompt),
-            new ChatMessage("user", ContentPrompt.BuildUserPrompt(request))
+            new ChatMessage("system", systemPrompt),
+            new ChatMessage("user", userPrompt)
         ], Stream: true);
 
         using var response = await SendAsync(payload, cancellationToken);
