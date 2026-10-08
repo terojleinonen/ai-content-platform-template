@@ -37,7 +37,8 @@ commit keys, `.env` files or `*.db` files; they are git-ignored.
    `fix/short-description`).
 2. Keep the change focused: one feature or fix per pull request.
 3. Add or update tests for what you change (see below).
-4. Update the README when behavior, configuration or the API changes.
+4. Update the README when behavior, configuration or the API changes, and add a line to the
+   `Unreleased` section of [CHANGELOG.md](CHANGELOG.md) for anything users would notice.
 5. Open a pull request describing **what** changed, **why**, and **how you tested it**.
    Pull requests are squash-merged once CI passes and the change is reviewed.
 
