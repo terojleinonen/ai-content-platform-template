@@ -54,6 +54,13 @@ To start your own project from it, click **Use this template** on GitHub
   | Text  | ✅ template-based, offline | ✅ official [C# SDK](https://www.nuget.org/packages/Anthropic), streaming | ✅ Chat Completions |
   | Image | ✅ SVG placeholder, offline | – | ✅ Images API (`gpt-image-1`) |
 
+## See it in action
+
+Writing a product description for a project with a brand voice: the text streams in as Claude
+writes it, then the SEO and brand checks score the result.
+
+![Demo: filling in a brief, the text streaming in live, and the finished result with SEO and brand check](docs/images/demo.gif)
+
 ## Quick start
 
 Prerequisites: [.NET 10 SDK](https://dotnet.microsoft.com/download) and Node.js 22+.
