@@ -13,4 +13,5 @@
 - [ ] Backend builds with 0 warnings; `cd frontend && npm run build` passes
 - [ ] Schema change? A migration for **both** SQLite and PostgreSQL (see CONTRIBUTING.md)
 - [ ] README updated if behavior, configuration or the API changed
+- [ ] CHANGELOG.md `Unreleased` entry for user-visible changes
 - [ ] No secrets, `.env` or database files committed
