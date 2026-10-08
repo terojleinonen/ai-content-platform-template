@@ -1,5 +1,7 @@
 # AI Content Creation Platform – Demo / Template
 
+[![CI](https://github.com/terojleinonen/ai-content-platform-template/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/terojleinonen/ai-content-platform-template/actions/workflows/ci.yml?query=branch%3Amain)
+
 A full-stack, working demo of an **AI-powered content creation SaaS**:
 ASP.NET Core (.NET 10) API + React/Vite frontend, with pluggable AI providers.
 
