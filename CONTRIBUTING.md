@@ -12,8 +12,8 @@ Open an [issue](https://github.com/terojleinonen/ai-content-platform-template/is
 you expected, what happened, and how to reproduce it (steps, request/response, logs). Say which
 AI provider you used (Mock, Anthropic, OpenAI) and which database (SQLite, PostgreSQL).
 
-**Security issues:** please don't open a public issue. Report them privately through the
-repository's **Security → Report a vulnerability** tab.
+**Security issues:** please don't open a public issue. Report them privately as described in
+the [security policy](SECURITY.md).
 
 ## Development setup
 
